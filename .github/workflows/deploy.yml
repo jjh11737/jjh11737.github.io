@@ -2,8 +2,7 @@ name: Deploy VitePress site to Pages
 
 on:
   push:
-    branches:
-      - master
+    branches: [master]
 
 permissions:
   contents: read
@@ -29,9 +28,11 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm install
+        working-directory: docs
+        run: npm ci
 
       - name: Build VitePress site
+        working-directory: docs
         run: npm run docs:build
 
       - name: Setup Pages
@@ -43,12 +44,7 @@ jobs:
           path: docs/.vitepress/dist
 
   deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-
     needs: build
-
     runs-on: ubuntu-latest
 
     permissions:
@@ -57,5 +53,4 @@ jobs:
 
     steps:
       - name: Deploy to GitHub Pages
-        id: deployment
         uses: actions/deploy-pages@v4
