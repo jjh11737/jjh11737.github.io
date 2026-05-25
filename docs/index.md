@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: "jjh's blog"
-  text: "Notes on systems and learning"
-  tagline: "Computer Architecture / Verilog / Statistics / ML"
+  text: "记录一些笔记和想法"
+  tagline: ""
 
   actions:
     - theme: brand
@@ -17,7 +17,7 @@ hero:
 
     - theme: alt
       text: Notes
-      link: /notes/notes_index.md
+      link: /notes/
 
 
 features:
