@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitepress'
 import mathjax3 from 'markdown-it-mathjax3'
-import { generateSidebar } from './sidebar.mjs'
+
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
   title: "jjh's blog",
@@ -17,11 +17,24 @@ export default defineConfig({
     nav: [
       { text: 'Home', link: '/' }
     ],
-    
-    sidebar: generateSidebar(),
+
+    sidebar: [
+      {
+        text: 'Notes',
+        items: [
+          { text: 'Notes Home', link: '/notes/' },
+        ]
+      },
+      {
+        text: 'Posts',
+        items: [
+          { text: 'Posts Home', link: '/posts/' },
+        ]
+      }
+    ],
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/jjh11737' }
+      { icon: 'github', link: 'https://github.com/vuejs/vitepress' }
     ]
   }
 })

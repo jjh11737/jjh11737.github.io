@@ -2,9 +2,6 @@
 我的各种笔记
 
 ---
-
-## Statistcs Learning
-  
-  -[sl](./sl.md)
+就是笔记
   
 ---
