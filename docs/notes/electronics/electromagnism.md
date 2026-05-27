@@ -121,3 +121,32 @@ $$
 #### 2 非永久极化
 
 我们这里同样还是仅考虑线性各向同行的简单媒质。由于非时变，介电常数必须是实数，但可以是位置的函数。而我们不能预先求出等效电荷系统，只能以来$\vec D = \varepsilon \vec E$用宏观场定律求解！
+
+常见例题：
+
+
+
+
+
+
+
+
+
+## 物质磁化
+
+
+
+
+
+
+
+
+
+最终磁荷模型的B-D形式场定律为：
+$$
+\nabla \times H = \vec J_f + \frac {\partial}{\partial t}\vec D \\
+\nabla \times \vec E = -\frac \partial {\partial t} \vec B \\
+\nabla \cdot \vec D = \rho_f \\
+\nabla \cdot \vec B = 0 \\
+\nabla \cdot \vec J = -\frac \partial {\partial t} \rho
+$$
