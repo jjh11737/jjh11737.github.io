@@ -1,5 +1,11 @@
 import fs from 'fs'
 import path from 'path'
+import { fileURLToPath } from 'url'
+
+// 侧边栏生成不依赖运行时的 cwd，以本文件位置为基准定位笔记目录
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const notesRoot = path.resolve(__dirname, '../notes')
+const postsRoot = path.resolve(__dirname, '../posts')
 
 function scanDir(dir, base = '') {
   const entries = fs.readdirSync(dir, { withFileTypes: true })
@@ -41,12 +47,12 @@ function scanDir(dir, base = '') {
 export function generateSidebar() {
   return {
     '/notes/': scanDir(
-      path.resolve('docs/notes'),
+      notesRoot,
       '/notes'
     ),
 
     '/posts/': scanDir(
-      path.resolve('docs/posts'),
+      postsRoot,
       '/posts'
     )
   }
