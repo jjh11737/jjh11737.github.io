@@ -620,7 +620,39 @@ endmodule
 后者验证结果是：
 ![image-20260827183616967](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20260827183616967.png)
 
-而数码管我先写了个递增的
+而数码管：
+```verilog
+module bcd7seg(
+  input [3:0] b,
+  output reg [7:0] h
+);
+// NVBoard 约定：h[7:0] = {A,B,C,D,E,F,G,DP}，低电平点亮（0 = 亮，1 = 灭）
+always @(*) begin
+  case(b)
+    4'b0000 : h = 8'h03;
+    4'b0001 : h = 8'h9f;
+    4'b0010 : h = 8'h25;
+    4'b0011 : h = 8'h0d;
+    4'b0100 : h = 8'h99;
+    4'b0101 : h = 8'h49;
+    4'b0110 : h = 8'h41;
+    4'b0111 : h = 8'h1f;
+    4'b1000 : h = 8'h01;
+    4'b1001 : h = 8'h09;
+    4'b1010 : h = 8'h11;
+    4'b1011 : h = 8'hc1;
+    4'b1100 : h = 8'h63;
+    4'b1101 : h = 8'h85;
+    4'b1110 : h = 8'h61;
+    4'b1111 : h = 8'h71;
+    default: h = 8'hff;
+  endcase
+end
+endmodule
+
+```
+
+
 
 ![image-20260827201554900](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20260827201554900.png)
 
@@ -705,7 +737,40 @@ endmodule
 
 #### 实验4：计数器/时钟
 
+一个简单的计数器（我加入了步长和计数方向的输入）：
+```verilog
+module Counter #(
+  parameter WIDTH=4
+) (
+  input clk,
+  input rst,
+  input en,
+  input sub,                    // 0 add 1 sub
+  input [WIDTH-1:0] step,
+  output reg [WIDTH-1:0] out
+);
+wire [WIDTH-1:0] next_out;
+wire tmp;
+Adder #(
+  .WIDTH(WIDTH)) c_adder(
+  .in1(out),
+  .in2(step),
+  .sign(sub),
+  .out_s(next_out),
+  .out_c(tmp)
+);
+always @(posedge clk) begin      // 同步复位
+  if (rst) out <= 0;
+  else if (en)  out <= next_out;
+end
 
+endmodule
+
+```
+
+
+
+![image-20260828125533317](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20260828125533317.png)
 
 
 
