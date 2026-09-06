@@ -85,6 +85,8 @@
 
 ## E4 
 
+### 预处理
+
 预处理就是包含：
 
 - 包含头文件
@@ -158,6 +160,1017 @@ int main() {
 
 把这两个输出都作为了`.log`文件输出，然后试着`diff`了一下，发现基本上头文件名字都是差不多的，无非是来源不一样
 
+### 编译
+
+编译阶段在这里gcc就是先转换为汇编语言
+
+我们还是以clang为例
+
+> 什么是Clang：
+>
+> 一个基于llvm的编译器
+
+#### 词法分析
+
+词法分析干的事情是识别并记录源文件中的每一个token，包括标识符/关键字/常数/字符串/运算符/大括号/分号等。而遇到非法的token时就会报错
+
+```bash
+clang -fsyntax-only -Xclang -dump-tokens a.c
+```
+
+> 部分输出：
+> ```
+> typedef 'typedef'	 [StartOfLine]	Loc=</usr/lib/llvm-19/lib/clang/19/include/__stddef_size_t.h:18:1>
+> ```
+>
+> 显然是我们前面预处理引入了头文件，这里就在后面展示了对应的头文件？嗯，这些似乎和我们文件本身无关，查阅资料似乎是因为这些type是被我们的编译器本身引入的
+>
+> 有意思的是这里我一开始`>output.txt`不行，改成`2>output.txt`就行了，输出是从stderr出来的
+
+显然词法分析这一步就是简单的字符串匹配程序
+
+#### 语法分析
+
+按照C的语法把识别出来的token组织为树状结构，从而梳理出源程序的层次结构（文件函数语句表达式变量）。同样遇到语法错误也会报错。语法分析的结果就呈现为**语法树(Abstract Syntax Tree---AST)**
+```bash
+clang -fsyntax-only -Xclang -ast-dump a.c
+```
+
+> 关于AST：
+>
+> 比如一个简单的函数，我写了:
+> ```c
+> int sum(int a, int b){
+>     return a + b;
+> }
+> ```
+>
+> 观察一下输出，忽略前面的：
+>
+> ![image-20260903092735349](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20260903092735349.png)
+>
+> 这就是一个树，显然它的两个参数是孩子节点，而更具体的BinaryOperator则是更孩子的
+>
+> 它是如何组织的？
+>
+> 有3个Class：
+>
+> - `Decl`（declaration)，用于声明函数和类型
+>   - `FunctionDecl`：
+>   - `ParmVarDecl`：
+> - `Stmt`(statements)，描述程序执行时具体要做什么
+>   - `CompoundStmt`
+>   - `BinaryOperator`
+> - `Type`，数据类型
+>   - `IntegerType`
+>   - `PointerType`
+
+#### 语义分析
+
+语义分析则是按照C语言的语义确定AST中每个表达式的类型。
+此过程中，相容的类型将根据C语言标准进行类型转换（算术类型提升），而如果不符合语义则会报告错误。
+
+> 符合语法但不符合语义的包括：未定义的引用 / 运算符的操作数类型不匹配 / 函数调用参数的类型和数量不匹配...
+
+对于`clang`来说实际上我们刚刚输出AST那一步时就已经给出表达式的类型了
+
+> 实际上多数编译器并没有吧语法和语义分析分开来
+
+语义分析的一个重要应用就是静态程序分析（不运行程序的前提下对源代码进行分析，本质就是分析AST中的语义信息（包括码风/规范/潜在软件缺陷/安全漏洞/性能问题）
+
+> 比如这个程序：
+> ```c
+> #include <stdlib.h>
+> int main(){
+>     int *p = malloc(sizeof(*p) * 10);
+>     free(p);
+>     *p = 0;
+>     return 0;
+> }
+> ```
+>
+> 程序本身单句语法语义没问题，也能编译，但显然会有内存泄露。
+> 如果添加`-Wall`选项，`gcc`就会进行更多的代码检查静态分析，通过警告指出代码的问题：
+>
+> ```bash
+> $ gcc ./testWall.c  -Wall
+> ./testWall.c: In function ‘main’:
+> ./testWall.c:5:6: warning: pointer ‘p’ used after ‘free’ [-Wuse-after-free]
+>     5 |   *p = 0;
+>       |   ~~~^~~
+> ./testWall.c:4:3: note: call to ‘free’ here
+>     4 |   free(p);
+>       |   ^~~~~~~
+> ```
+>
+> 当然我们也可以用clang来干这件事：
+> ```bash
+> $ clang testWall.c --analyze -Xanalyzer -analyzer-output=text
+> testWall.c:5:6: warning: Use of memory after it is freed [unix.Malloc]
+>     5 |   *p = 0;
+>       |   ~~ ^
+> testWall.c:3:12: note: Memory is allocated
+>     3 |   int *p = malloc(sizeof(*p) * 10);
+>       |            ^~~~~~~~~~~~~~~~~~~~~~~
+> testWall.c:4:3: note: Memory is released
+>     4 |   free(p);
+>       |   ^~~~~~~
+> testWall.c:5:6: note: Use of memory after it is freed
+>     5 |   *p = 0;
+>       |   ~~ ^
+> 1 warning generated.
+> 
+> ```
+
+实际上使用linter是零成本的，我们**建议更多使用linter来发现潜在的问题**，毕竟进入程序运行阶段调试会变得更加复杂
+
+#### 中间代码生成
+
+中间代码是一种由编译器定义的，面向编译场景的ISA，也称中间表示(IR---Intermediate Representation)或中间语言，我们可以查看生成的llvm IR：
+```bash
+$ clang -S -emit-llvm testWall.c
+$ cat testWall.ll
+; ModuleID = 'testWall.c'
+source_filename = "testWall.c"
+target datalayout = "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"
+target triple = "x86_64-pc-linux-gnu"
+
+; Function Attrs: noinline nounwind optnone uwtable
+define dso_local i32 @main() #0 {
+  %1 = alloca i32, align 4
+  %2 = alloca ptr, align 8
+  store i32 0, ptr %1, align 4
+  %3 = call noalias ptr @malloc(i64 noundef 40) #3
+  store ptr %3, ptr %2, align 8
+  %4 = load ptr, ptr %2, align 8
+  call void @free(ptr noundef %4) #4
+  %5 = load ptr, ptr %2, align 8
+  store i32 0, ptr %5, align 4
+  ret i32 0
+}
+
+; Function Attrs: nounwind allocsize(0)
+declare noalias ptr @malloc(i64 noundef) #1
+
+; Function Attrs: nounwind
+declare void @free(ptr noundef) #2
+
+attributes #0 = { noinline nounwind optnone uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+attributes #1 = { nounwind allocsize(0) "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+attributes #2 = { nounwind "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+attributes #3 = { nounwind allocsize(0) }
+attributes #4 = { nounwind }
+
+!llvm.module.flags = !{!0, !1, !2, !3, !4}
+!llvm.ident = !{!5}
+
+!0 = !{i32 1, !"wchar_size", i32 4}
+!1 = !{i32 8, !"PIC Level", i32 2}
+!2 = !{i32 7, !"PIE Level", i32 2}
+!3 = !{i32 7, !"uwtable", i32 2}
+!4 = !{i32 7, !"frame-pointer", i32 2}
+!5 = !{!"Debian clang version 19.1.7 (3+b1)"}
+```
+
+这里就是把C的变量翻译为中间代码的变量，如`%1` / `%2` / `%3`...同时程序语句就会翻译为中间代码指令，如`alloca` / `store` / `load` / `call` / `add` / `ret`
+
+> 为什么需要IR？
+>
+> - 对后端：处理器的ISA太多了，直接翻译还要优化，这是麻烦而且高维护成本的，统一为一种IR那么只需要解决IR到ISA的转换，这显然会简单很多
+> - 对前端源语言也太多了，但是它们都是要被编译到ISA的
+> - 显然，这样我们需要$m+n$而非$m*n$个模块
+>
+> ```
+>              frontend                              backend
+>            +----------+                        +------------+
+>       C -> |  Clang   | -+                 +-> |  llvm-x86  | -> x86
+>            +----------+  |                 |   +------------+
+>            +----------+  +-> +----------+ -+   +------------+
+> Fortran -> | llvm-gcc | ---> | llvm-opt | ---> |  llvm-arm  | -> ARM
+>            +----------+  +-> +----------+ -+   +------------+
+>            +----------+  |                 |   +------------+
+> Haskell -> |    GHC   | -+                 +-> | llvm-riscv | -> RISC-V
+>            +----------+  LLVM IR      LLRM IR  +------------+
+> ```
+>
+> 不同编译器的IR不一样，比如LLVM$\to$LLVM IR / gcc $\to$ GIMPLE
+
+#### 编译优化
+
+通过编译优化，开发者就不必过度关注于开发阶段的程序性能而集中于软件业务逻辑上面，因此我们需要了解一下常见的优化技术
+
+##### 编译优化正确性的定义
+
+**optimization = semantic-preserving transformation**
+
+如果两个程序在某种意义上“一致”，就可以用“简单的”替代“复杂的”
+
+而遵循C语言标准逐条语句执行的行为就称为“严格执行”，以此为基准，C语言对“一致”做了严谨的定义，即优化后的程序应满足**“程序可观测行为”**，包括：
+
+1. **对`volatile`关键字修饰变量的访问需要严格执行（不允许比如将变量使用缓存的，必须保证每一次访问都是真的对内存访问而非高速缓存里面）**
+2. **程序结束时，写入文件的数据要和严格执行一致**
+3. **交互式输入输出需要与严格执行一致**
+
+”可观测行为“刻画的是从外部视角看C程序对外界的影响。只要在这个条件下如果优化后的程序变量更少语句更少那么显然程序会更快
+
+##### 编译优化技术举例
+
+在实际的编译流程中，优化技术往往不会在C源代码上展开（实际上是IR层更普遍）
+
+> 不过我们还是用C的形式来呈现
+
+- **常量传播** 
+
+  也就是说如果RHS的变量本身是个常数，那么LHS可以直接被赋值为一个常数，也就无需指令了
+  ```c
+  //          优化前              |            优化后
+    int a = 1;                   |    int a = 1;
+    int b = a + 2;               |    int b = 3;
+    printf("%d\n", b * 3);       |    printf("%d\n", 9);
+  ```
+
+- **死代码消除 DCE**
+
+  对于不可达的代码或不再使用的变量，可将其移除
+  ```c
+  //          优化前              |            优化后
+    #define DEBUG 0              |    #define DEBUG 0
+    int fun(int x) {             |    int fun(int x) {
+      int a = x + 3;             |      return x / 2;
+      if (DEBUG) {               |    }
+        printf("a = %d\n", a);   |
+      }                          |
+      return x / 2;              |
+    }                            |
+  ```
+
+- **消除冗余操作**
+
+  如果是没有被读出就被覆盖的赋值操作，可以将其移除（显然这里`f()`不能移除，因为编译器不知道它有没有副作用）
+  
+  ```c
+  //          优化前              |            优化后
+    int a;                       |    int a;
+    a = 3;                       |    f();
+    a = f();                     |    a = 10;
+    a = 7;                       |
+    a = 10;                      |
+  ```
+  
+- **代码强度削减 Strength Reduction**
+
+  换句话说就是把需要高开销和资源的指令替换为低开销的指令：（比如这里乘法器明显比移位寄存器慢得多，而且是整数语义一致）
+  ```c
+  //          优化前              |            优化后
+    int x = a[i * 4];            |    int x = a[i << 2];
+  ```
+
+- **提取公共子表达式 CSE**
+
+  对于多次计算的子表达式，可以用中间变量保存结果再在后续代码中直接引用（也就是缓存起来）
+
+  ```c
+  //          优化前              |            优化后
+    int x = a * b - 1;           |    int temp = a * b;
+    int y = a * b * 2;           |    int x = temp - 1;
+                                 |    int y = temp * 2;
+  ```
+
+- **循环不变代码外提**
+
+  如果代码每次循环都不变，可以直接提到循环外一次计算搞定（同样`f2()`可能有副作用，我们无法保证，必须放在循环里面）
+  ```c
+  //          优化前              |            优化后
+    int a = f1();                |    int x = f1() + 2;
+    for (i = 0; i < 10; i ++) {  |    for (i = 0; i < 10; i ++) {
+      int x = a + 2;             |      int y = f2(x);
+      int y = f2(x);             |      sum += y + i;
+      sum += y + i;              |    }
+    }                            |
+  ```
+
+- **函数内联 Function Inlining**
+
+  如果函数本身足够简单，就不需要通过`call`来压栈和返回过程
+
+  ```c
+  //          优化前              |            优化后
+    int f1(int x, int y) {       |    int f1(int x, int y) {
+      return x + y;              |      return x + y;
+    }                            |    }
+    int f2(int x) {              |    int f2(int x) {
+      return f1(x, 3);           |      return x + 3;
+    }                            |    }
+  ```
+
+- **循环展开**
+
+  如果循环次数确定且足够小，就会进行展开
+
+- **软流水 Software Pipelining**
+
+  就像硬件的流水线一样，我们可以把一个复杂的操作给拆开来并进行重叠。也就是说编译器会交错调度不同循环迭代的指令，使多个迭代重叠运行来提高处理器资源利用率和循环吞吐率
+
+- **归纳变量分析(Induction Variable Analysis)**
+
+  识别出循环中随迭代按固定方式变化的变量，以便简化计算 / 消除冗余 / 优化循环控制：
+
+  > 比如：
+  > ```c
+  > for (i = 0; i < n; i++)
+  >     a[2*i] = b[i];
+  > ```
+  >
+  > 显然这里我们没必要真的作乘法，那就太慢了，可以直接通过地址递增搞定
+
+- **自动并行化(Automatic Parallelization)**
+
+  分析程序中的数据依赖，自动将彼此独立的计算转换为可并行的形式来利用多核和并行硬件
+
+  > 就比如：
+  > ```c
+  > for(i = 0; i < n; i++)
+  >     c[i] = a[i] + b[i];
+  > ```
+  >
+  > 显然循环之间不存在数据依赖，这些指令完全可以并行执行
+
+- **别名分析(Alias Analysis)**
+
+  就是判断两个表达式是否可能访问同一个内存，这被称为*aliased*
+
+  > ```c
+  > *p = 1;
+  > *q = 2;
+  > i = p + 3;
+  > ```
+  >
+  > 显然如果两者指向同一个内存地址，就不能随便重排，但如果能证明不可能是同一个位置，那就可以把`i`替换为4
+
+- **指针分析(Pointer Analysis)**
+
+  指针可能指向哪些对象
+
+##### 启用编译优化技术
+
+加上选项，比如`-O1`就可以启用优化了
+
+> 我`diff`了一下：
+>
+> ```bash
+> $ diff testWall.ll testWall1.ll 
+> 6,7c6,16
+> < ; Function Attrs: mustprogress nofree norecurse nosync nounwind willreturn memory(none) uwtable
+> < define dso_local noundef i32 @main() local_unnamed_addr #0 {
+> ---
+>     # 重点在这里
+> > ; Function Attrs: noinline nounwind optnone uwtable 
+> # 这是注释，说明了这个函数具有属性：不内联/不通过异常展开退出/不要优化/unwind table
+> > define dso_local i32 @main() #0 {
+> >   %1 = alloca i32, align 4			
+> # 在栈上分配一个能存放`i32`的内存，4字节对齐
+> >   %2 = alloca ptr, align 8	
+> # 分配一个ptr指针，8字节对齐
+> >   store i32 0, ptr %1, align 4	
+> # 把`i32`的0存入%1的内存地址，4字节对齐
+> >   %3 = call noalias ptr @malloc(i64 noundef 40) #3
+> >   store ptr %3, ptr %2, align 8
+> >   %4 = load ptr, ptr %2, align 8
+> >   call void @free(ptr noundef %4) #4
+> >   %5 = load ptr, ptr %2, align 8
+> >   store i32 0, ptr %5, align 4
+> 11c20,21
+> < attributes #0 = { mustprogress nofree norecurse nosync nounwind willreturn memory(none) uwtable "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+> 	# 
+> ---
+> > ; Function Attrs: nounwind allocsize(0)
+> > declare noalias ptr @malloc(i64 noundef) #1
+> 13,14c23,33
+> < !llvm.module.flags = !{!0, !1, !2, !3}
+> < !llvm.ident = !{!4}
+> ---
+> > ; Function Attrs: nounwind
+> > declare void @free(ptr noundef) #2
+> > 
+> > attributes #0 = { noinline nounwind optnone uwtable "frame-pointer"="all" "min-legal-vector-width"="0" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+> > attributes #1 = { nounwind allocsize(0) "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+> > attributes #2 = { nounwind "frame-pointer"="all" "no-trapping-math"="true" "stack-protector-buffer-size"="8" "target-cpu"="x86-64" "target-features"="+cmov,+cx8,+fxsr,+mmx,+sse,+sse2,+x87" "tune-cpu"="generic" }
+> > attributes #3 = { nounwind allocsize(0) }
+> > attributes #4 = { nounwind }
+> > 
+> > !llvm.module.flags = !{!0, !1, !2, !3, !4}
+> > !llvm.ident = !{!5}
+> 20c39,40
+> < !4 = !{!"Debian clang version 19.1.7 (3+b1)"}
+> ---
+> > !4 = !{i32 7, !"frame-pointer", i32 2}
+> > !5 = !{!"Debian clang version 19.1.7 (3+b1)"}
+> 
+> ```
+>
+> 这段代码就是刚刚的`use-after-free`的案例，神奇的是这里整个函数都消失了！
+> 因为编译器认为我这么做是UB，一旦是UB的话编译器就会认为我后面那个`*p = 0;`是无效的；
+> 问题是前面的`malloc` / `free`**并非没有副作用**啊？
+> 但是显然虽然有副作用，但是全局语义分析会发现这个被分配的对象：
+>
+> - **没有被外部观察**
+> - **没有被返回**
+> - **也没有写入全局变量**
+> - **也没有在交互式IO里面暴露**
+> - **立刻就free了**
+>
+> 说明它**对可观测行为没有任何影响**！！于是编译器就做了DCE，全部删掉了
+
+> 加`volatile`和不加对比：
+> ```bash
+> $ diff test_volatile.ll test_volatile_novol.ll 
+> 14,15c14,15
+> <   %2 = load volatile i32, ptr @x, align 4
+> <   %3 = load volatile i32, ptr @y, align 4
+> ---
+> >   %2 = load i32, ptr @x, align 4
+> >   %3 = load i32, ptr @y, align 4
+> 
+> ```
+>
+> 操作一致，但是加上了`volatile`的标签，这个标签本质是防止上一次访问后默认就采用上一个访问的寄存器地址，这当然快但是可能会出错
+> （它主要应付的是那种编译器看不到的，但是会改变内存内容 /要求每次访问内存都实际发生的情况，比如异步修改（中断处理程序）/多线程/。。。）
+
+
+
+关于优化等级：
+
+- 针对程序性能都有`-Ofast` > `-O3` > `-O2` > `-O1` > `Og` > `O0`
+- 一般使用`-O2`
+- 对`-O3`，`gcc`还会生成更多的代码来换取更高的程序性能
+- `-Ofast`更加激进，可能会采取一些违反语言标准的优化策略（所以`clang`认为是deprecated的）
+- `-Og`主要是仅采用调试友好的优化策略，提升程序性能的同时让优化后的程序仍能保持程序原本的层次结构
+
+- 面向代码大小的优化等级：`-Oz` > `-Os` > `-O1` > `-O0`
+- 想要仔细查看开启的优化技术，`gcc`是`-Q --help=optimizers`，`clang`是`-ftime-report`
+
+
+
+#### 目标代码生成
+
+从我们的LLVM IR翻译为对应的ISA，此时将`%1`之类的翻译为寄存器 / 虚拟内存地址，将IR的指令翻译为处理器ISA的指令：
+
+```bash
+$ clang -S testWall.c --target=riscv64-linux-gnu -o testWall_riscv.s
+$ cat testWall_riscv.s 
+	.text
+	.attribute	4, 16
+	.attribute	5, "rv64i2p1_m2p0_a2p1_f2p2_d2p2_c2p0_zicsr2p0_zmmul1p0"
+# 这是一个RV64目标
+	.file	"testWall.c"
+	.globl	main                            # -- Begin function main
+	.p2align	1
+	.type	main,@function
+main:                                   # @main
+	.cfi_startproc
+# %bb.0:
+	addi	sp, sp, -48
+# 栈增长48字节
+	.cfi_def_cfa_offset 48
+	sd	ra, 40(sp)                      # 8-byte Folded Spill
+# save doubleword，把一个双字sp+40存入ra压栈
+	sd	s0, 32(sp)                      # 8-byte Folded Spill
+	.cfi_offset ra, -8
+	.cfi_offset s0, -16
+	addi	s0, sp, 48
+	.cfi_def_cfa s0, 0
+	li	a0, 0
+	sd	a0, -40(s0)                     # 8-byte Folded Spill
+	sw	a0, -20(s0)
+	li	a0, 40
+	call	malloc
+	sd	a0, -32(s0)
+	ld	a0, -32(s0)
+	call	free
+	ld	a0, -40(s0)                     # 8-byte Folded Reload
+	ld	a1, -32(s0)
+	sw	a0, 0(a1)
+	ld	ra, 40(sp)                      # 8-byte Folded Reload
+	ld	s0, 32(sp)                      # 8-byte Folded Reload
+	addi	sp, sp, 48
+	ret
+.Lfunc_end0:
+	.size	main, .Lfunc_end0-main
+	.cfi_endproc
+                                        # -- End function
+	.ident	"Debian clang version 19.1.7 (3+b1)"
+	.section	".note.GNU-stack","",@progbits
+	.addrsig
+	.addrsig_sym malloc
+	.addrsig_sym free
+```
+
+> 看起来已经是汇编代码了，但是对应的section里面还没有填好内容
+> 基本来说干的事情就是先栈增长48字节，然后把ra保存在sp+40也就是这个栈帧的底部，往栈顶8个字节处存放当前的s0（frame pointer即这个栈帧开始的位置），我认为目的应该就是在调用前保存当前的寄存器，再让`s0 = sp + 48`保存,
+
+
+
+
+
+### 可执行目标文件的生成和执行
+
+#### 汇编
+
+刚刚已经得到了可读的汇编语言文本，但是机器不认识，需要转换为二进制码，那么就需要将其转变为指令的二进制编码，也就是**汇编(assemble)**
+
+> 当然实际上刚刚展现的ISA还不是一个目标文件的结构，实际上这个过程除了解析为机器码之外还会把符号填充和做标记，最终才形成一个整体的ELF文件
+
+这部分就简单多了，查阅ISA手册，将代码中的文本指令逐条翻译为相应的二进制编码，从而得到目标文件。
+```bash
+clang -c a.c
+objdump -d a.o
+```
+
+> -d即反汇编，展示的`.text`段，不包括header之类的，`-h`则是看header
+>
+> 不过想看整个文件还不如：
+> ```bash
+> $ readelf -a testWall.o
+> ```
+>
+> 到了这一步就有了基本的ELF头和符号表以及各个section了，是一个完整的可重定位目标文件了
+
+但是显然我们上面得到的是基于本机ISA的目标文件，想要rv64的就需要交叉编译：
+```bash
+$ clang -c testWall.c --target=riscv64-linux-gnu
+$ riscv64-linux-gnu-objdump -d testWall.o
+```
+
+当然也可以通过`gcc`来生成目标文件：
+```bash
+$ riscv64-linux-gnu-gcc -c a.c
+```
+
+而反汇编也可以用LLVM的工具链，它可以自动是被目标文件对应的ISA架构：
+```bash
+$ llvm-objdump -d a.o
+```
+
+#### 链接
+
+链接就是符号解析+重定位
+
+
+
+
+
+#### 执行
+
+显然程序是需要由bash的进程先fork再execve：
+```bash
+$ strace ./a.out
+execve("./a.out", ["./a.out"], 0x7ffe875d9540 /* 58 vars */) = 0
+brk(NULL)                               = 0x56183534c000
+mmap(NULL, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7fd499713000
+access("/etc/ld.so.preload", R_OK)      = -1 ENOENT (没有那个文件或目录)
+openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3
+fstat(3, {st_mode=S_IFREG|0644, st_size=145523, ...}) = 0
+mmap(NULL, 145523, PROT_READ, MAP_PRIVATE, 3, 0) = 0x7fd4996ef000
+close(3)                                = 0
+openat(AT_FDCWD, "/lib/x86_64-linux-gnu/libc.so.6", O_RDONLY|O_CLOEXEC) = 3
+read(3, "\177ELF\2\1\1\3\0\0\0\0\0\0\0\0\3\0>\0\1\0\0\0p\236\2\0\0\0\0\0"..., 832) = 832
+pread64(3, "\6\0\0\0\4\0\0\0@\0\0\0\0\0\0\0@\0\0\0\0\0\0\0@\0\0\0\0\0\0\0"..., 840, 64) = 840
+fstat(3, {st_mode=S_IFREG|0755, st_size=1995216, ...}) = 0
+pread64(3, "\6\0\0\0\4\0\0\0@\0\0\0\0\0\0\0@\0\0\0\0\0\0\0@\0\0\0\0\0\0\0"..., 840, 64) = 840
+# 开始把libc映射到内存
+mmap(NULL, 2047568, PROT_READ, MAP_PRIVATE|MAP_DENYWRITE, 3, 0) = 0x7fd4994fb000
+mmap(0x7fd499523000, 1454080, PROT_READ|PROT_EXEC, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x28000) = 0x7fd499523000
+mmap(0x7fd499686000, 352256, PROT_READ, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x18b000) = 0x7fd499686000
+mmap(0x7fd4996dc000, 24576, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x1e0000) = 0x7fd4996dc000
+mmap(0x7fd4996e2000, 52816, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_ANONYMOUS, -1, 0) = 0x7fd4996e2000
+close(3)                                = 0
+mmap(NULL, 12288, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7fd4994f8000
+# 不知道在干啥（
+arch_prctl(ARCH_SET_FS, 0x7fd4994f8740) = 0
+set_tid_address(0x7fd4994f8a10)         = 97963
+set_robust_list(0x7fd4994f8a20, 24)     = 0
+rseq(0x7fd4994f8680, 0x20, 0, 0x53053053) = 0
+# 设置内存权限
+mprotect(0x7fd4996dc000, 16384, PROT_READ) = 0
+mprotect(0x561813312000, 4096, PROT_READ) = 0
+mprotect(0x7fd49974f000, 8192, PROT_READ) = 0
+# 查看栈限制，结果为rlim_cur=8MB, rlim_max=infinity
+prlimit64(0, RLIMIT_STACK, NULL, {rlim_cur=8192*1024, rlim_max=RLIM64_INFINITY}) = 0
+# 释放动态链接器刚才用的cache
+munmap(0x7fd4996ef000, 145523)          = 0
+# 确认stdout
+fstat(1, {st_mode=S_IFCHR|0600, st_rdev=makedev(0x88, 0xa), ...}) = 0
+# 获取随机数，随机化？
+getrandom("\x9f\xb7\x3a\xab\x64\x67\x49\xb4", 8, GRND_NONBLOCK) = 8
+# 总算到自己的程序了：
+# 堆顶指针在哪里？等效于sbrk(0)
+brk(NULL)                               = 0x56183534c000
+# 把brk堆顶指针移到对应的位置
+brk(0x56183536d000)                     = 0x56183536d000
+write(1, "Hello World!\n", 13Hello World!
+)          = 13
+write(1, "RISC-V", 6RISC-V)                   = 6
+exit_group(0)                           = ?
++++ exited with 0 +++
+
+```
+
+很显然，多数的操作实际上都是系统调用，最后结束时还是需要`exit_group()`这个系统调用返回，退出线程组也就是进程了
+
+不过也可以通过`gdb`：
+```bash
+$ gdb ./a.out
+(gdb) starti
+# 先看看pc指向哪里，只看10条
+(gdb) x/10i $pc
+=> 0x7ffff7fe42c0:	mov    %rsp,%rdi
+   0x7ffff7fe42c3:	call   0x7ffff7fe4e30
+   0x7ffff7fe42c8:	mov    %rax,%r12
+   0x7ffff7fe42cb:	mov    %rsp,%r13
+   0x7ffff7fe42ce:	mov    (%rsp),%rdx
+   0x7ffff7fe42d2:	mov    %rdx,%rsi
+   0x7ffff7fe42d5:	and    $0xfffffffffffffff0,%rsp
+   # rtld应该就是运行时的动态链接器
+   0x7ffff7fe42d9:	mov    0x18d20(%rip),%rdi        # 0x7ffff7ffd000 <_rtld_global>
+   0x7ffff7fe42e0:	lea    0x10(%r13,%rdx,8),%rcx
+   0x7ffff7fe42e5:	lea    0x8(%r13),%rdx
+```
+
+而想要看退出时在干什么，我们`strace`已经知道了退出时的系统调用，那么就可以catch一下：
+```bash
+(gdb) catch syscall exit_group
+(gdb) run
+(gdb) x/10i $pc
+=> 0x7ffff7e842d5 <_exit+21>:	cmp    $0xfffffffffffff000,%rax
+   0x7ffff7e842db <_exit+27>:	jbe    0x7ffff7e842d0 <_exit+16>
+   0x7ffff7e842dd <_exit+29>:	neg    %eax
+   0x7ffff7e842df <_exit+31>:	mov    %eax,%fs:(%rsi)
+   0x7ffff7e842e2 <_exit+34>:	jmp    0x7ffff7e842d0 <_exit+16>
+   0x7ffff7e842e4:	cs nopw 0x0(%rax,%rax,1)
+   0x7ffff7e842ee:	xchg   %ax,%ax
+   0x7ffff7e842f0 <alarm>:	mov    $0x25,%eax
+   0x7ffff7e842f5 <alarm+5>:	syscall
+   0x7ffff7e842f7 <alarm+7>:	cmp    $0xfffffffffffff001,%rax
+   # 过程名是_exit，那就看它的整个部分
+(gdb) x/25i _exit
+   0x7ffff7e842c0 <_exit>:	mov    0x107b29(%rip),%rsi        # 0x7ffff7f8bdf0
+   0x7ffff7e842c7 <_exit+7>:	mov    $0xe7,%edx
+   0x7ffff7e842cc <_exit+12>:	jmp    0x7ffff7e842d1 <_exit+17>
+   0x7ffff7e842ce <_exit+14>:	xchg   %ax,%ax
+   0x7ffff7e842d0 <_exit+16>:	hlt
+   0x7ffff7e842d1 <_exit+17>:	mov    %edx,%eax
+   0x7ffff7e842d3 <_exit+19>:	syscall
+=> 0x7ffff7e842d5 <_exit+21>:	cmp    $0xfffffffffffff000,%rax
+   0x7ffff7e842db <_exit+27>:	jbe    0x7ffff7e842d0 <_exit+16>
+   0x7ffff7e842dd <_exit+29>:	neg    %eax
+   0x7ffff7e842df <_exit+31>:	mov    %eax,%fs:(%rsi)
+   0x7ffff7e842e2 <_exit+34>:	jmp    0x7ffff7e842d0 <_exit+16>
+   0x7ffff7e842e4:	cs nopw 0x0(%rax,%rax,1)
+   0x7ffff7e842ee:	xchg   %ax,%ax
+   0x7ffff7e842f0 <alarm>:	mov    $0x25,%eax
+   0x7ffff7e842f5 <alarm+5>:	syscall
+   0x7ffff7e842f7 <alarm+7>:	cmp    $0xfffffffffffff001,%rax
+   0x7ffff7e842fd <alarm+13>:	jae    0x7ffff7e84300 <alarm+16>
+   0x7ffff7e842ff <alarm+15>:	ret
+   0x7ffff7e84300 <alarm+16>:	mov    0x107ae9(%rip),%rcx        # 0x7ffff7f8bdf0
+   0x7ffff7e84307 <alarm+23>:	neg    %eax
+   0x7ffff7e84309 <alarm+25>:	mov    %eax,%fs:(%rcx)
+   0x7ffff7e8430c <alarm+28>:	or     $0xffffffffffffffff,%rax
+   0x7ffff7e84310 <alarm+32>:	ret
+   0x7ffff7e84311:	cs nopw 0x0(%rax,%rax,1)
+```
+
+
+
+### 手册行为和编码规范
+
+> 以C99为例
+
+#### 标准规范的实现
+
+标准规范的实现：将标准规范以某种形式实现出来
+
+而C的标准实现就是用编译器和运行时环境，二者符合C标准即可
+
+#### 程序执行的语义
+
+C程序的执行过程就是通过C程序的语句改变程序状态的过程。而标准手册这么说的：
+
+> The semantic descriptions in this International Standard describe **the behavior of an abstract machin**e in which issues of optimization are irrelevant.
+
+这里不关注优化，语义描述的是**一个抽象机的行为**
+
+>  2 A<u>ccessing a volatile object, modifying an object, modifying a file, or calling a function that does any of those operations</u> are all **side effects**, 12) which are changes in the state of the execution environment. Evaluation of an expression in general includes both value computations and initiation of side effects. Value computation for an lvalue expression includes determining the identity of the designated object.
+
+**Side Effect:**（执行环境状态的改变）
+
+- 访问`volatile`对象
+- 修改一个对象（一个有类型的内存区域）
+- 修改一个文件
+- 调用一个包含上述操作的函数
+
+对表达式的求值包括值的计算和副作用的引入。而对LHS的计算还会包括决定目标对象的实体
+
+而针对“访问(access)”和“修改(modify)”，
+
+> 3 Sequenced before is an asymmetric, transitive, pair-wise relation between evaluations executed by a single thread, which induces a partial order among those evaluations. Given any two evaluations A and B, if A is sequenced before B, then the execution of A shall precede the execution of B. 
+> (Conversely, if A is sequenced before B, then B is sequenced after A.) 
+> If A is not sequenced before or after B, then A and B are **unsequenced.** Evaluations A and B are indeterminately sequenced when A is sequenced either before or after B, but it is unspecified which.13) The presence of a sequence point between the evaluation of expressions A and B implies that every value computation and side effect associated with A is sequenced before every value computation and side effect associated with B. (A summary of the sequence points is given in annex C.)
+
+- precede：指针对一个线程中执行的求值所定义的一个反对称和传递性的二元关系，通过它可以得到这些求值之间的顺序
+- 如果A与B不是前序也不后序，就是未定序的
+- 如果`A`前序于`B`, 或者`A`后序于`B`, 但并未指定是何者, 则称`A`和`B`是不确定序的.
+- 如果`A`和`B`之间存在一个Sequence Point, 那么, 和`A`相关的所有值的计算和Side Effect, 都前序于和`B`相关的所有值的计算和副作用.
+
+借助Sequence Point的概念，严格定义了不同求值操作之间的合法顺序关系，结合上一条定义的Side Effect，这就严格定义了整个程序执行的语义
+
+> 比如:
+> ```c
+> a = 1;
+> b = a + 2;
+> ```
+>
+> 这里显然两个操作都是有side effect的，也就是说`a=1`必须在`b=a+2`前完成
+>
+> 又比如：
+> ```c
+> #include <stdio.h>
+> int f() { printf("in f()\n"); return 1; }
+> int g() { printf("in g()\n"); return 2; }
+> int h() { printf("in h()\n"); return 3; }
+> int main () {
+>   int result = f() + g() * h();
+>   return 0;
+> }
+> ```
+>
+> 由于`f` / `g` / `h`的调用都在同一个RHS里面，他们的调用之间不存在Sequence Point，换句话说这就是不确定序的
+
+一个具体的实现中，如果一个表达式可以推断出它的值用不到并且也不会产生需要的Side Effect，就可以不对它求值（优化空间）
+
+> 4 In the abstract machine, all expressions are evaluated as specified by the semantics. An actual implementation need not evaluate part of an expression if it can deduce that its value is not used and that no needed side effects are produced (including any caused by calling a function or accessing a volatile object)
+
+如果收到信号打断了当前的处理，那么那些既不是原子的又不是`volatile sig_atomic_t`的对象的值就是不确定的
+
+> 5 When the processing of the abstract machine is interrupted by receipt of a signal, the values of objects that are neither lock-free atomic objects nor of type **volatile sig_atomic_t** are unspecified, as is the state of the floating-point environment. The value of any object modified by the handler that is neither a lock-free atomic object nor of type **volatile sig_atomic_t** becomes indeterminate when the handler exits, as does the state of the floating-point environment if it is modified by the handler and not restored to its original state.
+
+这里则是强调一致性，和前面提到的一样
+
+> 6  The least requirements on a conforming implementation are:
+>  — Accesses to volatile objects are evaluated strictly according to the rules of the abstract machine. 
+> — At program termination, all data written into files shall be identical to the result that execution of the program according to the abstract semantics would have produced. 
+> — The input and output dynamics of interactive devices shall take place as specified in 7.21.3. The intent of these requirements is that unbuffered or line-buffered output appear as soon as possible, to ensure that prompting messages actually appear prior to a program waiting for input. 
+>
+> This is the observable behavior of the program.
+
+
+
+
+
+#### 未指定行为 Unspecified Behavior
+
+定义：
+
+> use of an unspecified value, or other behavior where this International
+> Standard provides two or more possibilities and imposes no further requirements
+> on which is chosen in any instance
+
+对此类行为的结果，C提供了多种选择，没有规定具体如何选择
+
+> 一个例子就是函数调用中参数的求值顺序：
+> ```c
+> # include <stdio.h>
+> void f(int x, int y){
+>     printf("x=%d, y=%d\n", x, y);
+> }
+> int main(){
+>     int i = 1;
+>     f(i++, i++);
+>     return 0;
+> }
+> ```
+>
+> 使用gcc 和 clang分别编译，结果不同（clang默认会警告，gcc需要开启`-Wall`）
+
+为了防止歧义，我们还是最好先指定好设好sequence point
+
+而实际上哪怕是同一个编译器，编译相同的程序也可能得到不同的结果，但是这仍然符合C的标准，甚至有编译器通过随机方式决定函数调用时的参数求值顺序
+
+```c
+if (rand() & 1) {}
+else {}
+```
+
+
+
+#### 实现定义行为(Implementation-defined Behavior)
+
+定义如下：
+
+> unspecified behavior where each implementation documents how the choice is made
+>
+> 1 behavior, upon use of a non-portable or erroneous program construct or of erroneous data, for which this International Standard **imposes no requirements** 
+>
+> 2 NOTE Possible undefined behavior ranges from ignoring the situation completely with unpredictable results, to behaving during translation or program execution in a documented manner characteristic of the environment (with or without the issuance of a diagnostic message), to terminating a translation or execution (with the issuance of a diagnostic message). 
+>
+> 3 EXAMPLE An example of undefined behavior is the behavior on integer overflow.
+
+这类行为是一类特殊的未指定行为，但具体实现需要将行为的选择写入相关文档
+
+一个常见的例子整数类型的长度。事实上**C从来没有定义过整数类型有多长**
+
+> 5.2.4.2:
+>
+> An implementation is required to document all the limits specified in this subclause, which are specified in the headers  and . Additional limits are specified in .
+>
+> 5.2.4.2.1:关于整数的长度
+>
+> The values given below shall be replaced by constant expressions suitable for
+> use in #if preprocessing directives. Moreover, except for CHAR_BIT and
+> MB_LEN_MAX, the following shall be replaced by expressions that have the same
+> type as would an expression that is an object of the corresponding type
+> converted according to the integer promotions. Their implementation-defined
+> values shall be equal or greater in magnitude (absolute value) to those shown,
+> with the same sign.
+
+C语言给出的是一个最小范围：
+![image-20260904133423878](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20260904133423878.png)
+
+原因：
+
+- 要兼容过去的，就比如说为什么signed char最小值的最大值是$-(2^7-1)$，尽管我们能表示的最小为$-128$，因为老的系统很可能还在用原码或反码
+
+> 甚至就连一个字节的长度都是`implementation-defined`的，历史上从1字节到48字节都有，这也是为什么我们前面要用取值范围而非字节描述
+
+- 要兼容未来的，我们只能用一个最小的取值范围
+
+> 可以在`/usr/include/limits.h`里面看linux此环境各个类型的取值
+
+#### 区域特定行为(Locale-specific Behavior)
+
+> behavior that depends on local conventions of nationality, culture, and
+> language that each implementation documents
+> 取决于国家惯例文化语言
+>
+> 就比如你要是在支持中文字符的具体实现中，那么你也可以用中文来描述变量
+
+#### 未定义行为(undefined Behavior)
+
+> behavior, upon use of a nonportable or erroneous program construct or of
+> erroneous data, for which this International Standard imposes no requirements
+
+这是一类程序或数据不符合标准的错误行为，但是C语言标准对这种行为的结果不作任何约束，怎么做都可以
+
+> 3.4.3
+> 2 NOTE Possible undefined behavior ranges from ignoring the situation completely with unpredictable results, to behaving during translation or program execution in a documented manner characteristic of the environment (with or without the issuance of a diagnostic message), to terminating a translation or execution (with the issuance of a diagnostic message). 3 EXAMPLE An example of undefined behavior is the be
+
+面对未定义的行为，结果包括：
+
+- 编译 / 执行时报错退出
+- 按照具体的实现文档要求来处理，可能不报警告
+- 无法预料
+
+> 一个未定义的例子：
+> ```c
+> #include <stdio.h>
+> int main(){
+>     int a[10] = {0};
+>     printf("a[10] = %d \n", a[10]);
+>     return 0;
+> }
+> ```
+>
+> 这不就是缓冲区溢出跑到栈还没到的地方了吗
+
+
+
+#### ABI (Application Binary Interface)
+
+如前所述，C语言的标准实现是由编译器负责生成，运行时环境负责支持程序的运行。
+
+而显然我们的程序/编译器/OS/库函数/ISA作为一个计算机系统的整体，彼此之间需要关联，这就需要用到ABI，它是**程序在二进制层面上与这些概念的接口规范**。
+
+前面说了C语言因为要兼容各种系统，无法精确定义各种行为的结果，但是对计算机系统来说各种条件多数是确定的，那么ABI作为一种在二进制层面的约定，就**可以看作C语言标准的一种具体实现的文档**（也就是说C语言标准层次中的很多实现定义行为会写入这里）
+
+它包含：
+
+- ISA / 寄存器结构 / 栈的组织 / 访存类型等
+- 处理器可以直接访问的基本数据类型的大小 / 布局 / 对齐方式
+- 调用规定，规定函数的参数如何传递和返回值
+- 程序如何向OS发起系统调用
+- 目标文件的格式 / 支持的运行库等
+
+
+
+### 指令集模拟器
+
+|          | C                      | ISA                     |
+| -------- | ---------------------- | ----------------------- |
+| 状态     | PC, V                  | PC, R, M                |
+| 激励     | 执行语句               | 执行指令                |
+| 状态转移 | semantics of statement | semantic of instruction |
+
+想要用C的状态机实现ISA的状态机，这需要我们用C的程序变量来实现ISA的`PC` / `GPR` / 内存，还需要用C的语句实现指令的语义
+
+#### sEMU的基本实现
+
+> 略过...
+
+#### 强化运行时环境
+
+显然这个运行时环境太简单了，除了**独立环境(freestanding environment)**（也就是运行在裸机上）；另一种是**宿主环境(hosted environment)**，也就是由OS相关组件提供运行时环境的支持
+
+显然我们没有实现内核的异常处理和系统调用之类的，那我们可以模拟一个运行时环境（尽管这和真实的相差太大）
+
+```c
+#include <stdint.h>
+#include <stdio.h>
+uint8_t PC = 0;
+uint8_t R[4];
+uint8_t M[16] = {
+  0x8a,   // li r0 10 (changed)
+  0x90,   // li r1 0
+  0xa0,   // li r2 0
+  0xb1,   // li r3 1
+  0x17,   // add r1 r1 r3
+  0x29,   // add r2 r2 r1
+  0xd1,   // bner0 r1, 4
+  0x42
+};
+void inst_cycle(){
+  uint8_t instrc = M[PC];
+  uint8_t opcode = instrc >> 6;
+  switch (opcode){
+    case 0:         // add
+      R[(instrc>>4) & 0x3] = R[(instrc>>2) & 0x3] + R[instrc & 0x3];
+      PC++;
+      break;
+    case 1:         // out
+      printf("%d\n", R[instrc & 0x3]);
+      PC++;
+      break;
+    case 2:
+      R[(instrc>>4) & 0x3] = instrc & 0xf;
+      PC++;
+      break;
+    case 3:
+      PC = (R[0] != R[(instrc & 0x3)]) ? ((instrc>>2)&0xf) : PC + 1;
+      break;
+    default:
+      printf("Undefined Instruction!\n");
+      PC++;
+      break;
+  }
+}
+void display(){
+  printf("PC=%d, ", PC);
+  for(int i = 0; i < 4; i++)
+    printf("R[%d] = %d, ", i, R[i]);
+  printf("\n");
+}
+
+int main(int argc, char **argv){
+  if(argc > 2){
+    printf("Usage: semu tar_num\n");
+    return 0;
+  }
+  if(argc == 2){
+    int tar_num = atoi(argv[1]);
+    M[0] = M[0] & 0xf0 | (tar_num & 0xf); 
+  }
+  while(1){
+    inst_cycle();
+    // display();
+    if(PC == 8) break;
+  }
+  return 0;
+}
+```
+
+
+
+#### minirvEMU的实现
+
+还是那个RV32I的精简版，
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -228,9 +1241,9 @@ Verilog里面的**过程**是可以被求值的对象，它们有状态，也可
 一个具体的事件会按照类别被添加到不同的区域，按照一定的规则转移到$R_1$，被处理后从事件队列中移出。
 一些事件的生成规则如下：
 
-- 显式零延迟`#0`，使对应过程挂起，产生一个$R_2$事件 （你可以有意地调整执行顺序）
-- 非阻塞赋值产生一个$R_3$事件
-- 系统任务`$monitor` / `$strobe`会在每个仿真时刻产生一个$R_4$事件
+- **显式零延迟`#0`**，使对应过程挂起，产生一个$R_2$事件 （你可以有意地调整执行顺序）
+- **非阻塞赋值**产生一个$R_3$事件
+- **系统任务`$monitor` / `$strobe`**会在每个仿真时刻产生一个$R_4$事件（而`$display`是$R_1$事件）
 - PLI例程的求值(如`vpi_register_cb(cbReadWriteSynch)`)会产生一个$R_2$事件
 
 因此标准手册在11.4就给出了一个简单的事件处理引擎伪代码：
@@ -367,7 +1380,7 @@ endmodule
 
 ```
 
-我们还是列出事件：E1-eval(1),E2-update(led), E3-eval(0), E4-update(counter), E5-eval({led[14:0], led[15]}), E6-update(led), E7-eval(count >= 5000000 ? 32'b0 : count + 1), E8-update(count)
+我们还是列出事件：$E1-eval(1),E2-update(led), E3-eval(0), E4-update(counter), E5-eval({led[14:0], led[15]}), E6-update(led), E7-eval(count >= 5000000 ? 32'b0 : count + 1), E8-update(count)$
 
 那么根据规则，我们分情况讨论：
 
@@ -2168,11 +3181,11 @@ MACRO NAND2X1H7L
 END NAND2X1H7L
 ````
 
-其中：
+属性含义：
 
 - `SYMMETRY X Y`表示标准单元可以沿X或Y轴方向对称放置，从而优化布局的效果（比如到某端口的线延迟
 - `PIN`字段用于描述指定引脚的一些属性，这里包含`DIRECTION`方向和`PORT`端口几何形状（
-- `SITE`给出了标准单元在放置时需要对齐的规则，此处字段`core7`表示引用流另一处的对齐规则
+- `SITE`给出了标准单元在放置时需要**对齐的规则**，此处字段`core7`表示引用流另一处的对齐规则
 
 
 
@@ -2208,7 +3221,7 @@ MMP0 Y A VDD VDD pm1p2_lvt_lp W=270n L=60n m=1
 
 >  画出这个标准单元的结构：的确是典型的与非门两个输入一个是一起从VSS串Y，一个是并联通过VDD连接到Y（画的太丑了就不放了）
 
-CDL描述的晶体管结构信息主要用于进行晶体管层次的SPICE仿真，以及用于检查GDS版图与网表的逻辑一致性（即LVS - Layout Versus Schematic）
+CDL描述的晶体管结构信息主要用于进行晶体管层次的SPICE仿真，以及用于检查GDS版图与网表的**逻辑一致性（即LVS - Layout Versus Schematic）**
 
 ##### GDS文件 - 物理版图
 
@@ -2274,6 +3287,141 @@ GDS文件包含了制造标准单元所需的所有物理和工艺新消息，�
 > 显然，这里用了8个晶体管，看看具体的晶体管构造                                                                                                      
 >
 > （我在想用rust写一个可视化脚本？）
+>
+> OAI22的命名表示`Or-And-Invert`，正对应我们这里描述的逻辑表达式
+>
+> 而AOI22:
+>
+> 根据命名应该是：`A0 `
+>
+> ```
+>       function : "(!A0 * !B0 * !C0) + (!A0 * !B1 * !C0) + (!A1 * !B0 * !C0) + (!A1 * !B1 * !C0)";
+> ```
+>
+> 
+
+标准单元中`X1`/`X4`这种后缀表示的是这个标准单元的驱动能力(drive strength)，驱动能力指的是标准单元在维持特定电压范围时能驱动 / 吸收的电流，它会影响下游标准单元翻转需要的时间。因此`NAND2X1H7L` `NAND2X2H7L` `NAND2X4H7L`在逻辑功能上是完全等价的，但是数字更大驱动力更强翻转更快，但是这就需要更大 / 更多的晶体管来实现，因此X4会面积更大功耗更高
+
+> 对比这三个：
+> ```
+> cell (NAND2X1H7L) {
+>  area : 1.12;
+>  cell_footprint : "NAND2X1H7L";
+>  cell_leakage_power : 0.434974;
+> cell (NAND2X2H7L) {
+>  area : 1.96;
+>  cell_footprint : "NAND2X2H7L";
+>  cell_leakage_power : 0.750363;
+> cell (NAND2X4H7L) {
+>  area : 3.36;
+>  cell_footprint : "NAND2X4H7L";
+>  cell_leakage_power : 1.50065;
+> ```
+>
+> 面积提升，静态功耗变大
+>
+> 再看晶体管：
+> ```
+> .SUBCKT NAND2X1H7L A B VDD VSS Y
+> *.PININFO A:I B:I Y:O VDD:B VSS:B
+> MMN0 Y B net6 VSS nm1p2_lvt_lp W=210n L=60n m=1
+> MMN1 net6 A VSS VSS nm1p2_lvt_lp W=210n L=60n m=1
+> MMP1 Y B VDD VDD pm1p2_lvt_lp W=270n L=60n m=1
+> MMP0 Y A VDD VDD pm1p2_lvt_lp W=270n L=60n m=1
+> .ENDS
+> 
+> .SUBCKT NAND2X2H7L A B VDD VSS Y
+> *.PININFO A:I B:I Y:O VDD:B VSS:B
+> MMN0 Y B net6 VSS nm1p2_lvt_lp W=300n L=60n m=1
+> MMN1 net6 A VSS VSS nm1p2_lvt_lp W=300n L=60n m=1
+> MMP1 Y B VDD VDD pm1p2_lvt_lp W=380n L=60n m=1
+> MMP0 Y A VDD VDD pm1p2_lvt_lp W=380n L=60n m=1
+> .ENDS
+> ```
+>
+> 二者晶体管数量和连接方式一致，但是沟道形状明显后者更宽
+
+##### 时序单元
+
+包含flip-flop和latch等，其中又包含 有/无清零端  / 置位端等各种类型，如`DFFX1H7L`，查看晶体管结构：
+```
+.SUBCKT DFFX1H7L CK D Q QN VDD VSS
+*.PININFO CK:I D:I Q:O QN:O VDD:B VSS:B
+XI2 net46 CKP CKN VDD VSS net33 / TSINV pl=6E-08 pw=1.5E-07 nl=6E-08 nw=1.5E-07
+XXI6 D CKN CKP VDD VSS net33 / TSINV pl=6E-08 pw=2.8E-07 nl=6E-08 nw=2E-07
+XI3 net46 CKP CKN VDD VSS net25 / TSINV pl=6E-08 pw=3E-07 nl=6E-08 nw=2.2E-07
+XI4 net9 CKN CKP VDD VSS net25 / TSINV pl=6E-08 pw=1.5E-07 nl=6E-08 nw=1.5E-07
+XI1 net33 VDD VSS net46 / INV pl=6E-08 pw=2.8E-07 nl=6E-08 nw=2E-07
+XI0 CKN VDD VSS CKP / INV pl=6E-08 pw=2.8E-07 nl=6E-08 nw=2E-07
+XXI12 net25 VDD VSS Q / INV pl=6E-08 pw=3E-07 nl=6E-08 nw=2.4E-07
+XXI10 net25 VDD VSS net9 / INV pl=6E-08 pw=3E-07 nl=6E-08 nw=2.2E-07
+XI5 net9 VDD VSS QN / INV pl=6E-08 pw=3E-07 nl=6E-08 nw=2.4E-07
+XXI4 CK VDD VSS CKN / INV pl=6E-08 pw=2.8E-07 nl=6E-08 nw=2E-07
+.ENDS
+// tsinv
+.SUBCKT TSINV A CK CKN VDD VSS Y
+*.PININFO A:I CK:I CKN:I VDD:B VSS:B Y:B
+MMN0 Y CK net18 VSS nm1p2_lvt_lp W=nw L=nl m=1
+MMN1 net18 A VSS VSS nm1p2_lvt_lp W=nw L=nl m=1
+MMP1 net024 A VDD VDD pm1p2_lvt_lp W=pw L=pl m=1
+MMP0 Y CKN net024 VDD pm1p2_lvt_lp W=pw L=pl m=1
+.ENDS
+```
+
+> 如何实现触发器功能的？
+
+
+
+##### I/O单元
+
+IO单元**用于将芯片内部的IO信号和金属压焊块(pad)连接起来**，芯片生产后封装工序会从IO单元的金属压焊块中引出金属引脚，从而允许芯片的外部信号通过引脚与芯片内部的IO信号交互。
+
+而相关的IO单元可以参考LIB文件：
+```
+pdk/icsprout55/IP/IO/ICsprout_55LLULP1233_IO_251013/liberty/ICSIOA_N55_3P3_tt_1p2_3p3_25c.lib 
+```
+
+IO单元可以继续分类如下：
+
+1. 数据IO单元(也称GPIO)，用于提供数据信号的输入输出，如`P65_1233_PBMUX`
+2. 核心电源单元，用于为芯片内部的晶体管提供电源，包括源极的电源(VSS)和漏极的电源(VDD)，如`P65_1233_VSS1`和`P65_1233_VDD1`.
+3. I/O电源单元, 用于为数据I/O单元(即第1类I/O单元)提供电源, 如`P65_1233_VSSIO3`和`P65_1233_VDDIO3`. 数据I/O单元通常比一般的标准单元要复杂, 因此其供电需求也不同于一般的标准单元, 故不能使用核心电源单元(即第2类I/O单元)为数据I/O单元供电.
+
+虽然IO单元也是标准单元库的一部分，但是它们的面积往往比一般的标准单元大了几个数量级，因为与芯片**外界通信对IO单元的功能提出了更多需求**
+
+> 如需要足够强的驱动力向芯片外输出信号，需要集成保护电路来放置外部静电对芯片内部造成损害，还需要符合芯片引脚的物理尺寸和焊接要求，比一般标准单元复杂得多
+
+对比尺寸：（根据lef文件）
+```
+MACRO MUX2X0P5H7L
+  CLASS CORE ;
+  ORIGIN 0 0 ;
+  FOREIGN MUX2X0P5H7L 0 0 ;
+  SIZE 2 BY 1.4 ;
+MACRO P65_1233_PBMUX
+  CLASS PAD ;
+  ORIGIN 0 20 ;
+  FOREI  
+  SIZE 65 BY 130 ;GN P65_1233_PBMUX 0 -20 ;
+  SIZE 65 BY 130 ;
+```
+
+
+
+##### 驱动单元
+
+驱动单元用于增强信号的驱动能力，保证信号的完整性，优化时序和负载。
+如果信号传输距离过长或下游电路过多时，驱动力不足就会导致传输延迟过高，甚至信号失真导致错误，插入驱动单元有助于缓解上述问题
+
+- 逻辑正向驱动单元，又称缓冲器(buffer)，其输出在逻辑上和输入完全相同
+
+  在ICsprout55中，这种驱动单元包括`BUFX1H7L` / `BUFX2H7L`之类的
+
+- 逻辑反向驱动单元，反相器(inverter)，功能和非门相同，存在多种驱动能力
+
+
+
+##### 物理单元
 
 
 
@@ -2284,14 +3432,460 @@ GDS文件包含了制造标准单元所需的所有物理和工艺新消息，�
 
 
 
+
+
+
+#### PVT角(PVT corner)
+
+电路的延迟受**3个因素**：**工艺(Process) / 电压(Voltage) / 温度(Temperature)**，统称PVT参数。
+
+后端工程师一般会选用多个PVT参数的组合作为一系列环境，并在设计阶段，尽可能保证芯片将来能在这些环境下工作，这些环境就被称为PVT角
+
+**在标准单元库里面不同的PVT角体现为不同的LIB文件。**
+
+在这些LIB文件中，标准单元虽然名称和面积都相同，但是延迟功耗不同，通过采用不同的LIB文件评估，就可以了解到芯片能否在对应的PVT角下按预期工作
+
+**工艺波动**指的是芯片制造过程中不可控的扰动因素，这些因素都会影响晶体管的电阻电容，最终影响晶体管的延迟表现
+
+> 比如晶圆中心的芯片所处环境与晶圆边界的芯片有所不同，晶体管金属层的厚度并非完全均匀，衬底的参杂浓度不均匀......
+
+为了测试电路在各种晶体管延迟下都能正确工作，一般会根据晶体管的工作速度定义若干情况，这些情况统称为**工艺角(process corner)**，通常用2个字母表示，第一个表示nMOS的工作速度，第二个表示pMOS的工作速度。这分为3种情况：typical-`t` / fast-`f` / slow-`s`。因此有5中工艺角：`ss`/`tt`/`ff`/`sf`/`fs`：
+
+![](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/28842801-910b-4947-b191-343d23427b4e.png)
+
+都是相同的情况下，仅仅改变延迟并不会改变整体功能。但是对`fs` / `sf`来说，由于一快一慢，这就导致CMOS $0 \to 1$和$1 \to 0$的延迟有所不同，此时为了保证各种电路元件能正常工作，元件延迟参数的确定需要更加谨慎。
+
+> 但实际上工艺波动本身具有随机性，出现刚好芯片中NMOS / PMOS工作速度相反变化是概率很低的，因此后端工程师通常不会考虑这两个工艺角
+
+> 由于工艺波动，往往同一批次芯片会有不同性能的表现，因此Intel就会把不同工艺角的芯片划分到不同层次的型号进行销售
+
+在**芯片的工作环境中，电压并非恒定不变**，例如电流通过电源网络会根据其电阻形成电压降，使得**不同位置上的标准单元的输入电压并不完全相同**：
+
+- 靠近电源的标准单元有更强的输入电压，工作速度会更快
+- 电源有白噪声，哪怕是同一个未知的标准单元晶体管的工作速度也会随时间波动
+- 为了应对电压的波动，后端工程师需要保证电路在标准工作电压$v$的$\pm 10$%区间
+- 温度也会影响晶体管的工作速度：外部环境温度以及晶体管密集 / 翻转频率搞的区域，产生热量也更高（学过模电知道温度更高晶体管因为晶格震动加剧，电流减小），速度下降
+
+LIB文件的命名中通常包含PVT角的信息
+
+> 例如`ss_1p08_125`表示工艺角`ss`，电压`1.08v`，温度为`125°C`；
+>
+> `ff_1p32_m40`：工艺角`ff`，电压`1.32v`，`-40°C`
+>
+> `p`$\to$`.`，`m`$\to$`-`
+
+> 尝试更改一下PVT角？
+>
+> 用不同的LIB文件，我暂时就看了top.v：diff了一下
+> ```
+> > AOI2XB1X1H7L \m_lights.count_15__reg_p_D_AOI2XB1X1H7L_Y ( .A0(\m_lights.count_15__reg_p_D_AOI2XB1X1H7L_Y_A0 ), .A1N(\m_lights.count_15__reg_p_D_AOI2XB1X1H7L_Y_A1N ), .B0(\m_lights.count_14__reg_p_D_NOR2X3H7L_Y_A ), .Y(\m_lights.count_15__reg_p_D ) );
+> > OAI21X0P5H7L \m_lights.count_15__reg_p_D_AOI2XB1X1H7L_Y_A0_OAI21X0P5H7L_Y ( .A0(\m_lights.count_14__reg_p_D_NOR2X3H7L_Y_B_XNOR2X4H7L_Y_A ), .A1(\m_lights.count_10__NAND3X1H7L_C_Y_OR4X3H7L_C_Y ), .B0(\m_lights.count_15_ ), .Y(\m_lights.count_15__reg_p_D_AOI2XB1X1H7L_Y_A0 ) );
+> > NOR3X1P4H7L \m_lights.count_15__reg_p_D_AOI2XB1X1H7L_Y_A1N_NOR3X1P4H7L_Y ( .A(\m_lights.count_14__reg_p_D_NOR2X3H7L_Y_B_XNOR2X4H7L_Y_A ), .B(\m_lights.count_15_ ), .C(\m_lights.count_10__NAND3X1H7L_C_Y_OR4X3H7L_C_Y ), .Y(\m_lights.count_15__reg_p_D_AOI2XB1X1H7L_Y_A1N ) );
+> 318,321c318,321
+> < AOI2XB1X1P4H7L \m_lights.count_16__reg_p_D_AOI2XB1X1P4H7L_Y ( .A0(\m_lights.count_16__reg_p_D_AOI2XB1X1P4H7L_Y_A0 ), .A1N(\m_lights.count_16__reg_p_D_AOI2XB1X1P4H7L_Y_A1N ), .B0(\m_lights.count_14__reg_p_D_NOR2X3H7L_Y_A ), .Y(\m_lights.count_16__reg_p_D ) );
+> < OAI21X0P5H7L \m_lights.count_16__reg_p_D_AOI2XB1X1P4H7L_Y_A0_OAI21X0P5H7L_Y ( .A0(\m_lights.count_16__reg_p_D_AOI2XB1X1P4H7L_Y_A1N_NOR3X1P4H7L_Y_B ), .A1(\m_lights.count_10__NAND3X2H7L_C_Y_OR4X3H7L_C_Y ), .B0(\m_lights.count_16_ ), .Y(\m_lights.count_16__reg_p_D_AOI2XB1X1P4H7L_Y_A0 ) );
+> < NOR3X1P4H7L \m_lights.count_16__reg_p_D_AOI2XB1X1P4H7L_Y_A1N_NOR3X1P4H7L_Y ( .A(\m_lights.count_16_ ), .B(\m_lights.count_16__reg_p_D_AOI2XB1X1P4H7L_Y_A1N_NOR3X1P4H7L_Y_B ), .C(\m_lights.count_10__NAND3X2H7L_C_Y_OR4X3H7L_C_Y ), .Y(\m_lights.count_16__reg_p_D_AOI2XB1X1P4H7L_Y_A1N ) );
+> < NAND2X0P5H7L \m_lights.count_16__reg_p_D_AOI2XB1X1P4H7L_Y_A1N_NOR3X1P4H7L_Y_B_NAND2X0P5H7L_Y ( .A(\m_lights.count_14_ ), .B(\m_lights.count_15_ ), .Y(\m_lights.count_16__reg_p_D_AOI2XB1X1P4H7L_Y_A1N_NOR3X1P4H7L_Y_B ) );
+> 
+> ```
+
+> 为什么适当降温就可以超频？很显然因为低温导致处理器的晶体管的电子迁移率$\mu_n$会变大，结果就是电流变大翻转更快
+
+
+
+#### 阈值电压
+
+回顾晶体管的工作原理，栅极电压和源极电压之间的差值必须达到某个阈值，晶体管才能导通。而**阈值电压较高的标准单元，需要更多的时间导通**，**延迟更高**。
+
+而对于**静态功耗**，如上文所述，它主要由漏电电流产生。而在目前的CMOS技术中，漏电电流中占比最多的部分是亚阈值电流(sub-threshold current)。产生原因在于截止状态仍有扩散电流通过，这是最主要的$I_{sub} \propto A e^{-B V_T}$，而近似一下$P_{static} = V_{DD} \cdot I_{leakage} = V_{DD} \cdot Ae^{-BV_T}$显然**阈值电压越高静态功耗越高**，
+
+不过**阈值电压并不会影响面积，**因为这取决于晶体管本身也就是衬底 / 绝缘层 / 栅极层这些的参杂和厚度
+
+通常**将标准单元按阈值电压分为如下几类**：
+
+- **HVT(High Voltage Threshold)**：阈值电压最高，因此功耗最低，最慢
+- **RVT(Regular Voltage Threshold)**，也称SVT Standard Voltage Threshold)
+- **LVT(Low Voltage Threshold)**
+- **ULVT(Ultra-Low Voltage Threshold)**：阈值电压最低
+
+低功耗会采用HVT；高性能应用场景中会偏向LVT / ULVT；两个目标都追求时则会混用，在影响性能的关键路径上使用后两者，在不影响的地方用前两者
+[thesis](https://ieeexplore.ieee.org/abstract/document/9923860)
+
+
+
+#### 轨道数
+
+**轨道(track)数**是标准单元的一个属性，它是标准单元高度的另一种衡量。高 - y / 宽 - x / 厚 - z（注意和我们日常使用不一样）
+
+而金属层里面的`PITCH`属性已经描述了该层的最小走线间距，为了方便EDA展开布线工作，**标准单元的高度往往会取`PITCH`的整数倍**。这个倍数就是标准单元的**轨道数**
+
+而因为一种标准单元库通常高度相同，因此也可以从轨道数描述不同单元库的标准单元
+（比如：6T标准单元）
+
+> 计算轨道数：
+>
+> 我们前面已经查询过了PITCH字段：(/prtech里面)
+> ```
+> LAYER MET1
+>   TYPE ROUTING ;
+>   DIRECTION HORIZONTAL ;
+>   PITCH 0.2 0.2 ;
+>   WIDTH 0.09 ;
+>   OFFSET 0 0 ;
+>   AREA 0.042 ;
+>   SPACING 0.09 ;
+>   MAXWIDTH 10 ;
+>   MINENCLOSEDAREA 0.18 ;
+>   RESISTANCE RPERSQ 0.1122 ;
+>   DCCURRENTDENSITY AVERAGE 1.5 ;
+> END MET1
+> ```
+>
+> 随便找一个单元都发现`  SIZE 4.2 BY 1.4 ;`
+> 因此轨道数是7T
+
+轨道数较少(6T, 7T)的标准单元面积小功耗低，但是驱动能力弱，晶体管翻转长，性能不足
+
+而轨道数较多(12T, 13T)的标准单元，就更好的性能，你也可以取平衡
+
+
+
+### 物理设计--从网表到可流片版图
+
+物理设计是指将网表中记录的标准单元及其连接关系映射到真实芯片三维空间的过程。
+
+负责物理设计的EDA工具需要**确定好每个标准单元在芯片中的坐标**，还需**确定走线的走向**，使得走线可以按照网表逻辑一致的功能。而记录标准单元的坐标/走线走向的文件，就是上文提到的GDS版图文件。最后EDA工具还需要评估得到的芯片是否能被正确制造，指标是否符合预期。
+
+而我们物理的设计实际上就是对我们前面提到的每一层确定内容：
+
+- 取多大面积（布图规划）
+- 在低层什么位置摆放什么标准单元（布图规划，布局）
+- 如何在中层连接这些标准单元（布线）
+- 如何规划时钟（时钟树综合）
+- 如何在高层规划电源（电源规划）
+
+```
+---------------------   M7    <----- 电源规划
+  | | | | | | | | |
+---------------------   M6    <----- 时钟树综合
+  | | | | | | | | |
+---------------------   M5    <-+
+  | | | | | | | | |             |
+---------------------   M4      |
+  | | | | | | | | |             +--- 布线
+---------------------   M3      |
+  | | | | | | | | |             |
+---------------------   M2    <-+
+  | | | | | | | | |
+---------------------   M1    <-+
+  | | | | | | | | |             +--- 布图规划, 布局
+=====================  多晶硅 <-+
++++++++++++++++++++++  绝缘层
+ooooooooooooooooooooo  硅衬底
+```
+
+
+
+#### 布图规划(FloorPlan)
+
+确定芯片的大小，并且摆放好一些后续流程不会调整位置的单元
+
+##### 确定芯片大小
+
+与标准单元的面积类似，**芯片大小(die size)**是指**芯片在平面$xOy$中投影的面积**，也就是芯片俯视图所得矩形的面积。 而芯片的厚度则是和选取的工艺相关的
+
+根据芯片的工艺结构，**芯片面积**：
+
+- **晶体管的面积**： 主要包含硅衬底的源极和漏极所占的面积，加上多晶硅层的栅极所占的面积。（对于EDA和用户是不用管的）
+- **走线**：分为垂直和水平两种方向。前者是通过通孔，后者是金属层内延伸。但是显然需要有最小间距，否则有干扰和短路的可能
+
+由于此时还没开展布线工作，因此无法得到走线所占的具体面积。在**布图规划阶段一般通过综合所得的面积报告来估算芯片大小**。估算时还需要考量标准单元总面积占芯片总面积的比例，根据经验这个**利用率**往往是$60\% - 70\%$，
+
+**利用率**的选取**需要在成本和设计难度之间trade-off**，过高会导致布线拥堵增加走线距离降频，过低会导致浪费空间（芯片的制造费用与面积成正比）
+
+选取：
+
+- 对于小芯片拓扑简单走线少，布局布线容易成功，可以高利用率
+- 复杂大芯片则不可以太高利用率（新手还是用低利用率吧）
+
+
+
+##### 确定芯片尺寸
+
+确定了大致面积，还需要确定芯片尺寸，也就是在x轴和y轴两个方向上的度量，除了我们刚才确定的综合面积，还需要考虑**芯片引脚的数量**，引脚数量的影响与**封装方案**有关
+
+> 一种常见的封装方案是QFP(Quad Flat Package)，让引脚分布在芯片四周，因此芯片尺寸会和引脚数量成正比
+
+一个芯片引脚就需要一个I/O单元，关键在于它的尺寸（因为IO单元不仅大，而且因为需要有专门承担供电的任务的IO，实际规划的引脚多于用于通信的引脚
+
+> 比如某芯片需要90个引脚通信，但需要1/3的引脚用于供电，那么实际需要的就是135个引脚，取整就是144脚的封装方案，均匀分布就是每条边36个引脚
+
+> 为什么芯片多采用正方形？因为对称性可以减轻后续工作的负担（并不必须要这样）
+
+**芯片引脚数量作为一种资源**，需要在项目前期的规格定义阶段就明确其需求。
+
+同时我们也可以**通过引脚数量快速估计芯片最小面积**
+
+> 比如28引脚通信，同样比例换算42 $\to$ 44引脚，
+
+
+
+另一个因素是**宏单元**，因为已经被预先设计好了，形状固定。因此摆放特定的宏单元就需要芯片的尺寸满足要求
+
+##### 摆放IO单元
+
+确定好尺寸后，接下来就可以在芯片四周摆放I/O单元了，一般摆放会遵循以下做法
+
+1. 将功能相近的顶层端口对应的数据I/O单元放到物理上相邻的位置
+
+   因为数据I/O的单元会通过走线连接到芯片内部的标准单元，这种摆放会有利于降低布线阶段的线延迟。（而如果摆在两侧或对角走线太长了）
+   ```
+            |    |    |                         |    |    |
+       +----+----+----+----+               +----+----+----+----+
+       |                   |               |                   |
+   A---+--+                +---        A---+--+                +---
+       |  o                |               |  o                |
+   B---+--+                +---         ---+  +                +---
+       |                   |               |  |                |
+    ---+                   +---         ---+  +----------------+---B
+       |                   |               |                   |
+       +----+----+----+----+               +----+----+----+----+
+            |    |    |                         |    |    |
+   ```
+
+   
+
+2. 根据工艺手册上对供电引脚密度的要求，摆放相应的核心电源单元和I/O电源单元
+
+```
++-----------------------------------------+
+|  I  I  P  p  I  I  P  p  I  I  P  p  I  |
+|                                         |
+|p                                       I|
+|                                         |
+|P                                       P|
+|                                         |          I 数据I/O单元
+|I                                       p|          p 核心电源单元
+|                                         |          P I/O电源单元
+|I                                       I|
+|                                         |
+|I                                       I|
+|                                         |
+|p                                       p|
+|                                         |
+|P                                       P|
+|                                         |
+|  I  p  P  I  I  p  P  I  I  p  P  I  I  |
++-----------------------------------------+
+```
+
+##### 摆放宏单元
+
+宏单元的占用面积比一般标准单元大得多（比如一个64*64的RAM，就需要24576(64\*64\*6)个晶体管）
+
+```
++-----------------------------------------+
+|  I  I  P  p  I  I  P  p  I  I  P  p  I  |
+|                                         |
+|p                                       I|
+|    +-------+                            |
+|P   | MMMMM |                           P|
+|    | MMMMM |                            |          I 数据I/O单元
+|I   | MMMMM |                           p|          p 核心电源单元
+|    +-------+                            |          P I/O电源单元
+|I                                       I|          M 宏单元
+|                            +-------+    |
+|I                           | MMMMM |   I|
+|                            +-------+    |
+|p                                       p|
+|                                         |
+|P                                       P|
+|                                         |
+|  I  p  P  I  I  p  P  I  I  p  P  I  I  |
++-----------------------------------------+
+```
+
+
+
+
+
+#### 电源规划(PowerPlan)
+
+电源规划的目标是在芯片层面规划电源走线和分布，保证芯片供电的可靠性：
+
+1. 规划I/O单元的**电源环(Power Ring)**
+
+   从物理分布来看，I/O单元的电源环围绕芯片四周的I/O单元，并与I/O单元的电源端口相连，由I/O单元中的I/O电源单元进行供电（I/O单元需要很强的驱动力，因此必须单独设计）
+
+2. 规划核心电源环
+
+   物理分布上和I/O单元的电源环类似，但是在I/O的内侧绕芯片四周形成电源网络的主干，由I/O单元中的核心电源单元进行供电，它负责向芯片内部的标准单元进行供电
+
+3. 规划芯片内部的**电源条线(power stripe)**
+
+   从物理分布来看，电源条线以纵横交错的方式分布在芯片内部，用于将电源均匀地输送到标准单元
+
+```
++-----------------------------------------+
+|  I  I  P  p  I  I  P  p  I  I  P  p  I  |
+| ####################################### |
+|p#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#I|
+| #% +-------+                         %# |
+|P#% | MMMMM |                         %#P|
+| #% | MMMMM |                         %# |          I 数据I/O单元
+|I#% | MMMMM |                         %#p|          p 核心电源单元
+| #% +-------+                         %# |          P I/O电源单元
+|I#%                                   %#I|          M 宏单元
+| #%                         +-------+ %# |          # I/O电源环
+|I#%                         | MMMMM | %#I|          % 核心电源环
+| #%                         +-------+ %# |          = 电源条线
+|p#%===================================%#p|
+| #%                                   %# |
+|P#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#P|
+| ####################################### |
+|  I  p  P  I  I  p  P  I  I  p  P  I  I  |
++-----------------------------------------+
+```
+
+那么总体来说，就是电源从供电IO引脚输入，通过两个Power Ring传播到四周，再通过电源条线传播到芯片各区域的标准单元，这就完成了供电
+
+#### 布局(Placement)
+
+布局的目标是把标准单元放入芯片确定物理位置，遵循规则：
+
+1. **标准单元之间不可相互重叠**.
+
+   标准单元是通过底层的晶体管和低层金属层连接实现的，不同标准单元的晶体管应该占用这些层次的不同位置，因此投影上我们不允许overlapping
+
+2. **标准单元的摆放需要满足一定的对齐条件**
+
+   LEF文件的`SITE`属性 / 轨道数，都是用于约束标准单元的布局位置的。
+
+   - `SITE`：对齐可以让电源规划阶段设置的电源条线轻松地接入标准单元
+   - 轨道数：让后续的布线阶段轻松满足金属层的走线最小间距要求（`PITCH`）
+
+除了让标准单元的布局满足制造要求外，EDA工具还会考虑如何提升电路的质量：
+
+- 把逻辑上相近的标准单元靠近摆放
+
+- 对标准单元进行镜像对称
+
+  
+
+- 拥塞缓解
+
+
+
+#### 时钟树综合（CTS-Clock Tree Synthesis）
+
+时钟树综合的目标：**把时钟信号送到所有时序单元的时钟端。**
+
+这个时钟网络通常只有一个或少数几个源头，我们将其视为根节点，那么具体的时序单元就是叶子节点了，故称“时钟树”
+
+在RTL的设计阶段，我们认为时钟信号是理想的，但实际的时钟是特殊的，需要满足：
+
+- **低延迟(Low Latency)：**
+
+  延迟的来源有可被EDA优化（走线长度）和不可的（时钟源本身的延迟）
+
+- **低偏斜(low skew)**
+
+  在RTL设计中，我们认为理想时钟信号会同时到达所有触发器，但实际上由于位置不同到达不同的触发器所需的时间不完全相同，这就产生了时钟偏斜。EDA能做的是规划走线保证到各触发器线延迟均匀
+  
+- **低抖动(low jitter)**
+
+  抖动是电信号在物理世界天然存在的特性，和具体的工艺参数有关，无法通过EDA工具优化消除。
+
+  但因此EDA建模时钟信号延迟是需要考虑抖动的影响（否则时序条件就不满足了）
+
+- **高驱动力(high drive)**
+
+  为了实现时钟信号的高驱动力，一般会在时钟树中插入专门的时钟缓冲器
+
+
+
+#### 布线(Routing)
+
+布线的目标：根据网表的拓扑关系，将布局阶段的标准单元通过走线连接起来
+
+显然这么多标准单元，一条走线无法连通布线就会失败，为了提升布线成功的概率，一般把布线任务分为两个阶段进行：
+
+- **全局布线(Global Routing)** ：规划粗粒度的走线方案，为这些粗粒度的走线方案分配布线资源。
+  在这个阶段，布线工具会将多个轨道看作一个网格，然后尝试通过网格把标准单元连接起来，获得一些“网格路径“。它会尝试保证连通性的同时尽可能避免拥塞和距离尽量短
+- **详细布线(Detailed Routing)**：在全局布线的基础上在”网格路径“内部确定走线的轨道，这一步才是真正的连接起来
+
+```
++-----------------------------------------+
+|  I  I  P  p  I  I  P  p  I  I  P  p  I  |
+| ####################################### |
+|p#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#I|
+| #% +-------+..@@o @@..@...   .....@.@%# |
+|P#% | MMMMM |  .@o.....@@@..... @@ o@@%#P|
+| #% | MMMMM |..@ o  @    o   .   . o @%# |          I 数据I/O单元
+|I#% | MMMMM |  . o       o   @   . o .%#p|          p 核心电源单元
+| #% +-------+  .@o  @@...o   ....@ o .%# |          P I/O电源单元
+|I#% oooooooooooooooooooooooooooooooooo%#I|<-- clk   M 宏单元
+| #% @ ..@...@ ..@@o @... o  +-------+.%# |          # I/O电源环
+|I#% @....@ .@.. @ o @. .@o .| MMMMM |.%#I|          % 核心电源环
+| #% @...@...@  .@ o @  ..@..+-------+@%# |          = 电源条线
+|p#%===================================%#p|          @ 标准单元
+| #% @...@      .@ o @... @.....@.. oo@%# |          o 时钟树
+|P#%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%#P|          . 走线
+| ####################################### |
+|  I  p  P  I  I  p  P  I  I  p  P  I  I  |
++-----------------------------------------+
+```
+
+
+
+#### 签核分析(Sign-off)
+
+签核分析目标：保证物理设计过程得到的版图是可生产的。
+需要保证版图满足前端设计的指标PPA，又得保证满足晶圆厂的生产制造要求
+
+工作包括不限于：
+
+- 静态时序分析STA：此时已经确定了走线/标准单元的位置和规格，可以准确建模出电路每一条路径的逻辑延迟和线延迟（包括时钟的延迟抖动偏斜）。目的是确认是否符合频率指标
+
+- 功耗分析
+
+- 信号完整性分析：分析相邻走线之间的串扰(crosstalk)现象，确保信号在串扰和噪声下仍能正常传输
+
+- 物理验证(PV Physical Verification)：对芯片进行物理结构的检查，发现违例则需要修改布局布线的结果重新检查，包括：
+
+  - 设计规则检查(DRC, Design Rule Check) 
+
+    保证GDS版图满足晶圆厂的设计规则，EDA工具可以从文件里面读取规则并逐条检查（线宽间距..）
+
+  - 电学规则检查(ERC, Electrical Rule Check)
+
+    是否有走线悬空，短路等电气问题
+
+  - 版图和原理图比较（LVS, Layout versus Schematic)
+
+    确认GDS版图（物理电路）与网表（逻辑电路）的一致性
+
+> 流片：
+>
+> 1. GDS提交给晶圆厂，晶圆厂按照版图制作出掩膜(mask)
+> 2. 晶圆厂用掩膜批量生产晶圆(wafer)，其上有多个裸片(die)
+> 3. 晶圆厂将裸片交给封装厂，其按照计划的方式封装
+
+
+
+
+
+
+
+### 代码规范
 
 #### 关于行为建模
 
-对于初学者最好不要乱用行为建模， 下面的问题可以帮助大家测试自己是否已经掌握Verilog的本质:
+对于初学者最好不要乱用行为建模， 下面的问题可以帮助测试自己是否已经掌握Verilog的本质:
 
 - 在硬件描述语言中, "执行"的精确含义是什么?
 
-  > 
+  > 精确含义是一个仿真中的事件模型？具体来说就是仿真器对这个事件队列的处理
   
 - 是谁在执行Verilog的语句? 是电路，综合器，还是其它的?
 
@@ -2299,11 +3893,11 @@ GDS文件包含了制造标准单元所需的所有物理和工艺新消息，�
 
 - if的条件满足, 就不执行else后的语句, 这里的"不执行"又是什么意思? 和描述电路有什么联系?
 
-  > 
+  > “不执行”在仿真器层面就是单纯的不运行后面的语句。而描述电路时就可能体现为具体的mux之类的元件
   
 - 有"并发执行", 又有"顺序执行", 还有"任何一个变量发生变化就立即执行", 以及"在任何情况下都执行", 它们都是如何在设计出来的电路中体现的?
 
-  > 
+  > 电路本身是并发的，而顺序则是通过时序边沿触发和状态转移完成的。而后面两个其实对硬件电路无所谓？因为这是对仿真器相关的
 
 而实际上对于真实的电路，无非就是告诉综合器如何连线而已，我们以二选一mux来说明这个问题：
 
@@ -2698,7 +4292,7 @@ endmodule
 
 
 
-
+实验6 移位寄存器及桶形寄存器
 
 
 
