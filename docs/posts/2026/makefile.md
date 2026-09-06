@@ -1,3 +1,8 @@
+---
+title: Makefile一些常用的点
+date: '2026-09-06'
+---
+
 # Makefile一些常用的点
 基本的内容可见[makefiletutorial](https://makefiletutorial.com/#getting-started)，相当全面了，因此这里仅仅记录我觉得重要会忘的点
 ## 通配符

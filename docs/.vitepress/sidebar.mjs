@@ -2,7 +2,6 @@ import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 
-// 侧边栏生成不依赖运行时的 cwd，以本文件位置为基准定位笔记目录
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const notesRoot = path.resolve(__dirname, '../notes')
 const postsRoot = path.resolve(__dirname, '../posts')

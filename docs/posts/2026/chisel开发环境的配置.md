@@ -1,3 +1,8 @@
+---
+title: Chisel开发环境的配置
+date: '2026-07-10'
+---
+
 # Chisel开发环境的配置
 不知道为什么我根据[官方教程](https://www.chisel-lang.org/docs/installation)似乎并不太成功？由于ysyx官方似乎更喜欢使用mill,因此我最后还是借鉴了[A-Minimal-Chisel-Project](https://github.com/ucb-bar/A-Minimal-Chisel-Project)
 ## 具体步骤：
