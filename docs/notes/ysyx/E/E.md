@@ -2549,7 +2549,7 @@ always @(posedge clk)
 - 同样z也不能被作为操作数或混合使用
 
 > `casex`-认为x和z `?`都是随便；`casez`-只认`z` / `?`
-> 换句话说casex 比casez更wildcard
+> 换句话说casex 比qcasez更wildcard
 
 
 
@@ -3770,8 +3770,6 @@ ooooooooooooooooooooo  硅衬底
 
 - 对标准单元进行镜像对称
 
-  
-
 - 拥塞缓解
 
 
@@ -3999,6 +3997,9 @@ endmodule
 
 
 ### 南京大学数字电路实验：
+
+> 似乎不建议使用case：
+> 因为使用case语句描述电路属于行为建模方式。随着电路变得越来越复杂，你可能会写出case语句中包含if语句，if语句中由嵌套case语句的代码，但你很可能已经理解不了它描述的电路是什么样的了。
 
 #### 实验2：译码器和解码器
 
@@ -4292,29 +4293,563 @@ endmodule
 
 
 
-实验6 移位寄存器及桶形寄存器
+#### 实验6 移位寄存器及桶形寄存器
+
+先测试`lsfr`：
+
+lsfr:
+
+```verilog
+module lfsr(
+  input clk,
+  input rst,
+  output reg [7:0] dout
+);
+wire next_h;
+assign next_h = dout[0] ^ dout[2] ^ dout[3] ^ dout[4];
+always @(posedge clk or posedge rst) begin
+  if(rst)
+    dout <= 1;
+  else
+    dout <= {next_h, dout[7:1]};
+end
+endmodule
+```
+
+![image-20260907125857327](/home/jjh/.config/Typora/typora-user-images/image-20260907125857327.png)
+
+没问题，那么就可以上板子了，不过发现太快了，所以加了个分频：
+```verilog
+module lfsr(
+  input clk,
+  input rst,
+  output reg [7:0] dout
+);
+wire next_h;
+assign next_h = dout[0] ^ dout[2] ^ dout[3] ^ dout[4];
+reg [31:0] count;
+always @(posedge clk or posedge rst) begin
+  if(rst) begin
+    dout <= 1;
+    count <= 0;
+  end
+  else begin
+    if(count == 0) dout <= {next_h, dout[7:1]};
+    count <= (count >= 5000000 ? 32'b0 : count+1);
+  end
+end
+endmodule
+```
+
+而`top.v`部分我想试试看`generate-for`：
+
+> 不过好像也没简单多少
+
+```verilog
+wire [7:0] bcds;
+wire [7:0] segs [0:7];
+lfsr m_lfsr(clk, rst, bcds);
+genvar i;
+generate
+  for(i = 0; i < 8; i++) begin: gen_seg 
+    bcd7seg m_seg (
+      .b({3'b000, bcds[i]}),
+      .h(segs[i])
+    );
+  end
+endgenerate
+assign seg0 = segs[0];
+assign seg1 = segs[1];
+assign seg2 = segs[2];
+assign seg3 = segs[3];
+assign seg4 = segs[4];
+assign seg5 = segs[5];
+assign seg6 = segs[6];
+assign seg7 = segs[7];
+endmodule
+```
+
+结果如下：
+![image-20260907202610278](/home/jjh/.config/Typora/typora-user-images/image-20260907202610278.png)
+
+
+
+#### 实验7 
+
+有限状态机是一种输入取决于过去输入和当前输入的时序逻辑模块，分为2个部分，用于产生有限状态机的下一个状态的次态逻辑，以及一个用于产生输出信号的输出逻辑。
+
+而有限状态机分为2种：Moore型和Mealy型。前者的输出只与当前的状态有关，而输入信号只会影响下一个时钟周期的状态，换句话说每次的输出都是由当前的状态译码而成，下一个周期才会反映出这个周期的输入变化，即使当前周期的输入改变，这也不会影响这个周期的输出。而后者的的状态则同时和当前的输入有关。
+因此可以说Mealy有限状态机对输入的响应要比Moore早一个周期（因此前者的输入信号噪声也可能影响输出信号）
+
+##### 简单的FSM
+
+代码：（我没有用给的模板）
+```verilog
+module fsm(
+  input clk, in, rst,
+  output out,
+  output reg [3:0] state
+);
+parameter[3:0] S0 = 0, S1 = 1, S2 = 2, S3 = 3, S4 = 4, S5 = 5, S6 = 6, S7 = 7, S8 = 8;        // 0-NULL, S1~S4 0, S5~s8 1
+always @(posedge clk or posedge rst) begin
+  if(rst) begin
+    state <= 0;
+  end
+  else begin 
+    case(state)
+      S0: state <= in ? S5 : S1; 
+      S1: state <= in ? S5 : S2;
+      S2: state <= in ? S5 : S3;
+      S3: state <= in ? S5 : S4;
+      S4: state <= in ? S5 : S4;
+      S5: state <= in ? S6 : S1;
+      S6: state <= in ? S7 : S1;
+      S7: state <= in ? S8 : S1;
+      S8: state <= in ? S8 : S1;
+      default: state <= S0;
+    endcase
+  end
+end
+assign out = rst ? 0 : (state == S4) | (state == S8);
+endmodule
+```
+
+为了看清楚我还是用了一个分频器的模板放到`top`这个module里面了：
+```verilog
+module divider #(parameter TIMES=5000000)(
+  input clk,
+  input rst,
+  output reg o_clk
+);
+reg [31:0] counter;
+always @(posedge clk or posedge rst) begin 
+  if(rst) begin 
+    counter <= 32'b0;
+    o_clk <= 1'b0;
+  end
+  else begin  
+    if(counter == 0) o_clk <= ~o_clk;
+    counter <= (counter >= TIMES-1) ? 0 : counter + {31'b0,1'b1};
+  end
+end
+
+
+endmodule
+```
+
+上板测试如下：
+
+![image-20260908125247980](/home/jjh/.config/Typora/typora-user-images/image-20260908125247980.png)
+![image-20260908125326063](/home/jjh/.config/Typora/typora-user-images/image-20260908125326063.png)
+
+
+
+##### 状态机的编码方式
+
+上面那种是采用顺序二进制编码的，但是有两个问题：
+
+- 输出时需要解码，需要额外组合逻辑
+
+- 当芯片受到辐射 / 干扰时，就可能造成状态机跳转失常甚至跳转到无效编码而死机...
+
+  > 就比如恰好跳转到一个等待输入的状态，而没有收到，那就死机了
+
+因此我们编码往往采用别的方式：
+
+- One-hot编码也就是独热码，当然编码是最长的，但是判断输出非常简单
+- gray-code 格雷码也可以，它的优点是发生状态跳转时状态向量只有1位变化
+
+一般来说顺序二进制 / gray-code的状态机使用了最少的触发器，但是较多的组合逻辑，适合提供更多组合逻辑的CPLD芯片，而对于触发器资源丰富的**FPGA更多会使用one-hot编码**
+
+##### ps/2接口控制器及键盘输入
+
+用于连接PS/2键盘和鼠标的一种串行IO接口。有2条信号线PS2_CLK和PS2_DAT，时钟用于指示数据线上的比特位何时有效。而主机和键盘间可以双向通信。
+
+只有PS2_DAT和PS2_CLK都为高电平（空闲时），键盘才可以给主机发送信号，而如果主机将PS2_CLK置低时，键盘准备接受主机发来的命令（不过我们这里不涉及主机发送命令的情况）
+当用户按下 / 松开按键时，键盘都会以11位 / 帧的格式串行传送数据给主机，同时在PS2_CLK上传输对应的时钟，1位开始(0)+8位数据+1奇偶校验位(奇校验)+1停止位(1) 。而每位在时钟的下降沿有效
+而键盘通过PS2_DAT发送的信息称为扫描码，每个扫描码可以由单个数据帧或连续多个数据帧构成，按下时发送的扫描码称为通码(Make Code)，释放时发出的扫描码称为断码(Break Code)
+
+> 以`w`为例，我们按下时PS2_DAT引脚会输出一帧数据，其中8位数据位为`1Dh`，如果一直没有被释放，那么就会不断输出同样的扫描码`1Dh`，直到有别的键被按下或`w`被释放。而断码则是`F0h`加上这个按键的通码，比如`w`就是`F0h 1Dh`两帧传输。如果多个键被同时按下，将会逐个输出扫描码
+
+![ps2makecode](https://nju-projectn.github.io/dlco-lecture-note/_images/ps02.png)
+
+![ps2makecodeExt](https://nju-projectn.github.io/dlco-lecture-note/_images/ps03.png)
+
+第一版：
+```verilog
+module rom_case(
+  input wire [7:0] addr,
+  output wire [7:0] data
+);
+  reg [7:0] rom [0:255];
+  initial begin
+    integer i;
+    for (i = 0; i < 256; i = i + 1)
+        rom[i] = 8'h00;
+    rom[8'h1C] = 8'h61;  // A -> 'a'
+    rom[8'h32] = 8'h62;  // B -> 'b'
+    rom[8'h21] = 8'h63;  // C -> 'c'
+    rom[8'h23] = 8'h64;  // D -> 'd'
+    rom[8'h24] = 8'h65;  // E -> 'e'
+    rom[8'h2B] = 8'h66;  // F -> 'f'
+    rom[8'h34] = 8'h67;  // G -> 'g'
+    rom[8'h33] = 8'h68;  // H -> 'h'
+    rom[8'h43] = 8'h69;  // I -> 'i'
+    rom[8'h3B] = 8'h6A;  // J -> 'j'
+    rom[8'h42] = 8'h6B;  // K -> 'k'
+    rom[8'h4B] = 8'h6C;  // L -> 'l'
+    rom[8'h3A] = 8'h6D;  // M -> 'm'
+    rom[8'h31] = 8'h6E;  // N -> 'n'
+    rom[8'h44] = 8'h6F;  // O -> 'o'
+    rom[8'h4D] = 8'h70;  // P -> 'p'
+    rom[8'h15] = 8'h71;  // Q -> 'q'
+    rom[8'h2D] = 8'h72;  // R -> 'r'
+    rom[8'h1B] = 8'h73;  // S -> 's'
+    rom[8'h2C] = 8'h74;  // T -> 't'
+    rom[8'h3C] = 8'h75;  // U -> 'u'
+    rom[8'h2A] = 8'h76;  // V -> 'v'
+    rom[8'h1D] = 8'h77;  // W -> 'w'
+    rom[8'h22] = 8'h78;  // X -> 'x'
+    rom[8'h35] = 8'h79;  // Y -> 'y'
+    rom[8'h1A] = 8'h7A;  // Z -> 'z'
+
+    // 0-9
+    rom[8'h45] = 8'h30;  // 0 -> '0'
+    rom[8'h16] = 8'h31;  // 1 -> '1'
+    rom[8'h1E] = 8'h32;  // 2 -> '2'
+    rom[8'h26] = 8'h33;  // 3 -> '3'
+    rom[8'h25] = 8'h34;  // 4 -> '4'
+    rom[8'h2E] = 8'h35;  // 5 -> '5'
+    rom[8'h36] = 8'h36;  // 6 -> '6'
+    rom[8'h3D] = 8'h37;  // 7 -> '7'
+    rom[8'h3E] = 8'h38;  // 8 -> '8'
+    rom[8'h46] = 8'h39;  // 9 -> '9'
+  end
+  assign data = rom[addr];
+endmodule
+
+
+module ps2_parser(
+  input clk,
+  input rst,
+  input ps2_clk, ps2_data,
+  output [3:0] b [7:0],      // bcd sent to seg decoders
+  output reg en                  // enable seg
+);
+parameter IDLE=0, BREAK=1;
+reg [1:0] state;
+reg nextdata_n;       // 每次读完置0一个周期，告诉下游读取完毕，只有ready时可以读取
+wire [7:0] data;      // data now
+wire ready, overflow;
+// for display, store as bcd
+wire [7:0] ascii;
+reg [3:0] code [1:0];
+ps2_keyboard m_ps2_keyboard (
+  .clk(clk),
+  .clrn(~rst),
+  .ps2_clk(ps2_clk),
+  .ps2_data(ps2_data),
+  .nextdata_n(nextdata_n),
+  .data(data),
+  .ready(ready),
+  .overflow(overflow)
+);
+
+rom_case rom(
+  .addr(data),
+  .data(ascii)
+);
+
+always @(posedge clk) begin
+  if(rst) begin
+    state <= IDLE;
+    en <= 0;
+    nextdata_n <= 1;      // ready to get data
+  end else begin
+    nextdata_n <= 1;      // ready to get data
+    if (ready) begin
+      case(state)
+        IDLE: begin        
+          if(data == 8'hf0) state <= BREAK;
+          else begin
+            code[0] <= data[3:0];
+            code[1] <= data[7:4];
+            en <= 1;
+          end
+        end
+        BREAK: begin
+          if(data == {code[1], code[0]}) begin
+            en <= 0;
+            state <= IDLE;
+          end
+        end
+      endcase
+      nextdata_n <= 0;
+    end
+  end
+end
+
+assign b[0] = ascii[3:0];
+assign b[1] = ascii[7:4];
+// assign b[2] = code[0];
+// assign b[3] = code[1];
+assign b[2] = data[3:0];
+assign b[3] = data[7:4];
+endmodule
+```
+
+但是我发现松开总是没法灭...我仔细想了想，问题似乎是我`parser`和`keyboard`都是在上升沿触发，那么即使我这次完成了消费也需要等一个周期后`keyboard`模块才会发现更新！而触发的时候我们的状态机接收到的还是上一个时刻的状态，因此一个数据会被多触发一次！这和我们的FIFO是不一致的，因此我引入了一个`WAIT`：此时问题好了很多，松手就能灭了，但是奇怪的是我必须反复按好几次才能完成更新。
+
+似乎问题是在我用了`data`...因为它不是被锁存的值...（而我们多数时间看到的data显然不是我们锁存的内容）
+
+```verilog
+module rom_case(
+  input wire [7:0] addr,
+  output wire [7:0] data
+);
+  reg [7:0] rom [0:255];
+  initial begin
+    integer i;
+    for (i = 0; i < 256; i = i + 1)
+        rom[i] = 8'h00;
+    rom[8'h1C] = 8'h61;  // A -> 'a'
+    rom[8'h32] = 8'h62;  // B -> 'b'
+    rom[8'h21] = 8'h63;  // C -> 'c'
+    rom[8'h23] = 8'h64;  // D -> 'd'
+    rom[8'h24] = 8'h65;  // E -> 'e'
+    rom[8'h2B] = 8'h66;  // F -> 'f'
+    rom[8'h34] = 8'h67;  // G -> 'g'
+    rom[8'h33] = 8'h68;  // H -> 'h'
+    rom[8'h43] = 8'h69;  // I -> 'i'
+    rom[8'h3B] = 8'h6A;  // J -> 'j'
+    rom[8'h42] = 8'h6B;  // K -> 'k'
+    rom[8'h4B] = 8'h6C;  // L -> 'l'
+    rom[8'h3A] = 8'h6D;  // M -> 'm'
+    rom[8'h31] = 8'h6E;  // N -> 'n'
+    rom[8'h44] = 8'h6F;  // O -> 'o'
+    rom[8'h4D] = 8'h70;  // P -> 'p'
+    rom[8'h15] = 8'h71;  // Q -> 'q'
+    rom[8'h2D] = 8'h72;  // R -> 'r'
+    rom[8'h1B] = 8'h73;  // S -> 's'
+    rom[8'h2C] = 8'h74;  // T -> 't'
+    rom[8'h3C] = 8'h75;  // U -> 'u'
+    rom[8'h2A] = 8'h76;  // V -> 'v'
+    rom[8'h1D] = 8'h77;  // W -> 'w'
+    rom[8'h22] = 8'h78;  // X -> 'x'
+    rom[8'h35] = 8'h79;  // Y -> 'y'
+    rom[8'h1A] = 8'h7A;  // Z -> 'z'
+
+    // 0-9
+    rom[8'h45] = 8'h30;  // 0 -> '0'
+    rom[8'h16] = 8'h31;  // 1 -> '1'
+    rom[8'h1E] = 8'h32;  // 2 -> '2'
+    rom[8'h26] = 8'h33;  // 3 -> '3'
+    rom[8'h25] = 8'h34;  // 4 -> '4'
+    rom[8'h2E] = 8'h35;  // 5 -> '5'
+    rom[8'h36] = 8'h36;  // 6 -> '6'
+    rom[8'h3D] = 8'h37;  // 7 -> '7'
+    rom[8'h3E] = 8'h38;  // 8 -> '8'
+    rom[8'h46] = 8'h39;  // 9 -> '9'
+  end
+  assign data = rom[addr];
+endmodule
+
+
+module ps2_parser(
+  input clk,
+  input rst,
+  input ps2_clk, ps2_data,
+  output [3:0] b [7:0],      // bcd sent to seg decoders
+  output reg en,                  // enable seg
+  output overflow,
+  output ready
+);
+parameter [1:0] IDLE=0, BREAK=1, WAIT = 2;
+reg [1:0] state;
+reg nextdata_n;       // 每次读完置0一个周期，告诉下游读取完毕，只有ready时可以读取
+wire [7:0] data;      // data now
+// for display, store as bcd
+wire [7:0] ascii;
+reg [3:0] code [1:0];
+reg [1:0] next_state;
+ps2_keyboard m_ps2_keyboard (
+  .clk(clk),
+  .clrn(~rst),
+  .ps2_clk(ps2_clk),
+  .ps2_data(ps2_data),
+  .nextdata_n(nextdata_n),
+  .data(data),
+  .ready(ready),
+  .overflow(overflow)
+);
+
+rom_case rom(
+  .addr({code[1], code[0]}),
+  .data(ascii)
+);
+
+always @(posedge clk) begin
+  if(rst) begin
+    state <= IDLE;
+    en <= 0;
+    nextdata_n <= 1;      // ready to get data
+  end else begin
+    nextdata_n <= 1;      // ready to get data
+    if (ready) begin
+      case(state)
+        IDLE: begin        
+        if(data == 8'hf0) begin 
+          next_state <= BREAK;
+          state <= WAIT;
+        end
+          else begin
+            code[0] <= data[3:0];
+            code[1] <= data[7:4];
+            en <= 1;
+            next_state <= IDLE;
+            state <= WAIT;
+          end
+      nextdata_n <= 0;
+        end
+        BREAK: begin
+          if(data == {code[1], code[0]}) begin
+            en <= 0;
+            next_state <= IDLE;
+            state <= WAIT;
+          end
+      nextdata_n <= 0;
+        end
+        WAIT: begin
+          state <= next_state;
+        end
+        default:
+          state <= state;
+      endcase
+    end
+  end
+end
+
+assign b[0] = ascii[3:0];
+assign b[1] = ascii[7:4];
+assign b[2] = code[0];
+assign b[3] = code[1];
+endmodule
+```
+
+> 不过WAIT可能不必要？
+
+
+
+#### 实验8 VGA
+
+标准的分辨率为$640\times 480$,保证刷新频率大于24,一般取60Hz，VGA接口最初用于CRT显示器接口。共有5个接口信号：R/G/B/HS(Horizontal Syn)/VS(Vertical Sync)
+
+每一帧都是从屏幕左上角按行进行显示的，行同步信号是一个负脉冲，行同步信号有效后，RGB端送出当前行显示的各像素点的RGB电压值，一帧显示结束后帧同步信号送出一个负脉冲，重新开始从屏幕左上端显示下一帧
+
+RGB并非所有时间都在传送像素信息，因为CRT的电子束从上一行行尾到下一行行头需要时间，从屏幕的右下角回到左上角开始下一帧也需要时间，而这段时间里面RGB传送的电压是0（黑），这些时间就称为电子束的消隐时间。行消隐时间以像素为单位，帧消隐时间以行为单位，给出时序图：
+![vga](https://nju-projectn.github.io/dlco-lecture-note/_images/vga03.png)
+
+那么显示一行需要：$96+48+640+16=800$个像素点的时间，而显示一帧需要：$2+33+480+10=525$行时间，那么显示图像就需要$800\times 525=420k$的像素时间，而每秒扫描60帧就是$25M$个像素点时间
+
+> 这里我先假设它不需要分频，因为似乎nvboard并没有指定频率之类的，估计只是取决于仿真跑的速度，借鉴了`example`里面的示例
+
+
+
+![image-20260909143203781](/home/jjh/.config/Typora/typora-user-images/image-20260909143203781.png)
 
 
 
 
 
+然后是实现碰撞功能，我先初步试了试加偏移量：
+```verilog
+wire [9:0] h_offset = 100;
+wire [9:0] v_offset = 100;
+wire in_img = (h_addr > h_offset) & (h_addr < h_offset + 100) & (v_addr > v_offset) & (v_addr < v_offset + 100);
+assign vga_data = in_img ? vga_ram[(v_addr-v_offset)*100 + (h_addr - h_offset)] : 24'b0;
+```
 
+![image-20260909153217418](/home/jjh/.config/Typora/typora-user-images/image-20260909153217418.png)
 
+没问题那就可以考虑根据周期改变我们的偏移量了，最终的代码：
+```verilog
+module top(
+  input clk,
+  input rst,
+  output VGA_CLK,
+  output VGA_HSYNC,
+  output VGA_VSYNC,
+  output VGA_BLANK_N,
+  output [7:0] VGA_R,
+  output [7:0] VGA_G,
+  output [7:0] VGA_B
+);
+assign VGA_CLK = clk;
+wire [23:0] vga_data;
+wire [9:0] h_addr;
+wire [9:0] v_addr;
+vga_ctrl m_vga_ctrl(
+    .pclk(clk),
+    .reset(rst),
+    .vga_data(vga_data),
+    .h_addr(h_addr),
+    .v_addr(v_addr),
+    .hsync(VGA_HSYNC),
+    .vsync(VGA_VSYNC),
+    .valid(VGA_BLANK_N),
+    .vga_r(VGA_R),
+    .vga_g(VGA_G),
+    .vga_b(VGA_B)
+);
+reg [23:0] vga_ram[524287:0];         // 1024 * 512
+initial begin
+  $readmemh("resource/100_100.hex",vga_ram);
+end
+reg [9:0] h_offset;
+reg [9:0] v_offset;
+reg signed [10:0] vx;
+reg signed [10:0] vy;
+wire signed [10:0] next_x = $signed({1'b0,h_offset}) + vx;
+wire signed [10:0] next_y = $signed({1'b0,v_offset}) + vy;
+parameter SPEED=1;
+reg vsync_d;
+wire vsync_negedge = vsync_d & ~VGA_VSYNC;
+always @(posedge clk) begin
+    vsync_d <= VGA_VSYNC;
+  if (rst) begin
+    h_offset <= 100;
+    v_offset <= 100;
+    vx <= 1;
+    vy <= 1;
+  end else if(vsync_negedge) begin
+    if(next_x >= 540) begin
+      vx <= -vx;
+      h_offset <= 540;
+    end else if(next_x == 0) begin
+      vx <= -vx;
+      h_offset <= 0;
+    end else begin
+      h_offset <= next_x[9:0];
+    end
+    if(next_y >= 380) begin
+      vy <= -vy;
+      v_offset <= 380;
+    end
+    else if(next_y == 0) begin
+      vy <= -vy;
+      v_offset <= 0;
+    end else begin
+      v_offset <= next_y[9:0];
+    end
+  end
+end
+wire in_img = (h_addr >= h_offset) & (h_addr < h_offset + 100) & (v_addr >= v_offset) & (v_addr < v_offset + 100);
+assign vga_data = in_img ? vga_ram[(v_addr-v_offset)*100 + (h_addr - h_offset)] : 24'b0;
+endmodule
 
+```
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+> 我一开始卡住就是没想到应该用`VGA_VSYNC`的下降沿作为使能条件，结果发现画面撕裂了，这说明我一帧还没渲染完它就移动了...
 
 
 
