@@ -40,7 +40,7 @@ endmodule
 
 
 
-##### fsm serial
+##### serial receiver
 
 我的题解：
 
@@ -90,7 +90,7 @@ endmodule
 
 
 
-### fsm serial datapath
+##### serial receiver and datapath
 
 题解：
 
@@ -150,7 +150,7 @@ endmodule
 
 
 
-##### FSM datapath with parity
+##### serial receiver with parity
 
 ```verilog
 module top_module(
@@ -210,5 +210,4 @@ module top_module(
 endmodule
 
 ```
-
 

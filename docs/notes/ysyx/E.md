@@ -1153,19 +1153,213 @@ int main(int argc, char **argv){
 
 还是那个RV32I的精简版，
 
+> 我这里出错卡住的点是忘记了`jalr`的目标有可能`rs1=rd`，因此必须先保存这个值再写回...因为不需要接线，而且调试起来远比logisim方便的多，所以还好
+
+
+
+加入`ebreak`指令：
+
+![image-20260911230903874](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20260911230903874.png)
 
 
 
 
 
+### GUI
+
+看看`video.c`：
+```c
+void redraw() {
+  int w = io_read(AM_GPU_CONFIG).width / N;
+  int h = io_read(AM_GPU_CONFIG).height / N;
+  int block_size = w * h;
+  assert((uint32_t)block_size <= LENGTH(color_buf));
+
+  int x, y, k;
+  for (y = 0; y < N; y ++) {
+    for (x = 0; x < N; x ++) {
+      for (k = 0; k < block_size; k ++) {
+        color_buf[k] = canvas[y][x];
+      }
+      io_write(AM_GPU_FBDRAW, x * w, y * h, color_buf, w, h, false);
+    }
+  }
+  io_write(AM_GPU_FBDRAW, 0, 0, NULL, 0, 0, true);
+}
+void update() {
+  static int tsc = 0;
+  static int dx[4] = {0, 1, 0, -1};
+  static int dy[4] = {1, 0, -1, 0};
+
+  tsc ++;
+
+  for (int i = 0; i < N; i ++)
+    for (int j = 0; j < N; j ++) {
+      used[i][j] = 0;
+    }
+
+  int init = tsc * 1;
+  canvas[0][0] = p(init); used[0][0] = 1;
+  int x = 0, y = 0, d = 0;
+  for (int step = 1; step < N * N; step ++) {
+    for (int t = 0; t < 4; t ++) {
+      int x1 = x + dx[d], y1 = y + dy[d];
+      if (x1 >= 0 && x1 < N && y1 >= 0 && y1 < N && !used[x1][y1]) {
+        x = x1; y = y1;
+        used[x][y] = 1;
+        canvas[x][y] = p(init + step / 2);
+        break;
+      }
+      d = (d + 1) % 4;
+    }
+  }
+}
+```
+
+很简单的逻辑，每次先往下走，不行就逆时针转90度直到能走，走过的不能走。而每个canvas的值对应多个像素，最终生成的就是螺旋线
+
+> 而canvas因为和step有关，所以随着逆时针绕圈，颜色会发生变化，又因为`init`和`tsc`有关。
+>
+> 这个`io_write`的语义是在x , y处绘制一个大小为`w*h`的矩形，`color_buf`里面存储着这个`w*h`的矩形的全部像素，当然是顺序的一维数组
 
 
 
 
 
+#### 简单的屏幕保护程序
+
+这个`io_write`函数需要一个完整的缓冲区，换句话说你必须要有一个w*h的缓冲区来缓冲每一个像素
+
+我们看到每次变化总是`ff`，那么我觉得直接就每次更新变化1直到0xff完成就好了：
+```c
+#include <am.h>
+#include <klib-macros.h>
+#define DIVID 20000
+uint32_t color_buf[400 * 300];
+uint32_t color_now; 
+void draw(uint32_t color){ 
+  for(int x = 0; x < 400; x++){
+    for (int y = 0; y < 300; y++){
+      color_buf[y*400+x] = color;
+    }
+  }
+  io_write(AM_GPU_FBDRAW, 0*400, 0*300, &color_buf, 400, 300, false);
+}
+uint32_t colors[] = {
+  0x00000000,
+  0x00ff0000,
+  0x0000ff00,
+  0x000000ff,
+  0x00ffff00,
+  0x00ff00ff,
+  0x0000ffff,
+  0x00ffffff
+};
+int main() {
+  ioe_init();
+
+  uint64_t times = 1;
+  uint8_t weight = 0;
+  int index = 0;
+
+  while (1) {
+    while (io_read(AM_TIMER_UPTIME).us / DIVID < times);
+    int next = (index + 1) % 8;
+    color_now = ((uint64_t)colors[index] * (0xff - weight) + (uint64_t)colors[next] * weight) / 0xff;
+    draw(color_now);
+    times ++;
+    if(weight++ == 0xff){
+      index = next;
+    }
+  }
+  return 0;
+}
+```
 
 
 
+接下来就是考虑引入按键，`esc`退出没什么，`exit(0)`就好了，而主要是加速，如果我们还是按照过去的框架修改`divider`，似乎会出问题？这不符合我们的语义，会卡死的...
+因此我决定改一下，就像单片机里面一样按照时间戳来更新：
+
+```c
+#include <am.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <klib-macros.h>
+#define DIVID 20000
+uint32_t divider = DIVID;
+uint32_t color_buf[400 * 300];
+uint32_t color_now; 
+void draw(uint32_t color){ 
+  for(int x = 0; x < 400; x++){
+    for (int y = 0; y < 300; y++){
+      color_buf[y*400+x] = color;
+    }
+  }
+  io_write(AM_GPU_FBDRAW, 0*400, 0*300, &color_buf, 400, 300, false);
+}
+uint32_t colors[] = {
+  0x00000000,
+  0x00ff0000,
+  0x0000ff00,
+  0x000000ff,
+  0x00ffff00,
+  0x00ff00ff,
+  0x0000ffff,
+  0x00ffffff
+};
+static bool has_uart, has_kbd;
+
+static void drain_keys() {
+  if (has_uart) {
+    while (1) {
+      char ch = io_read(AM_UART_RX).data;
+      if (ch == (char)-1) break;
+      printf("Got (uart): %c (%d)\n", ch, ch & 0xff);
+    }
+  }
+
+  if (has_kbd) {
+    while (1) {
+      AM_INPUT_KEYBRD_T ev = io_read(AM_INPUT_KEYBRD);
+      if (ev.keycode == AM_KEY_NONE) break;
+      if (ev.keycode == AM_KEY_ESCAPE)  exit(0);
+      // other conditions
+      divider = ev.keydown ? (DIVID / 2) : DIVID;
+    }
+  }
+}
+int main() {
+  ioe_init();
+  static uint64_t next_time = 0;
+  uint8_t weight = 0;
+  int index = 0;
+  // key board init
+  has_uart = io_read(AM_UART_CONFIG).present;
+  has_kbd  = io_read(AM_INPUT_CONFIG).present;
+
+  while (1) {
+    drain_keys();
+    uint64_t now = io_read(AM_TIMER_UPTIME).us;
+    if (now >= next_time){
+	    int next = (index + 1) % 8;
+	    color_now = ((uint64_t)colors[index] * (0xff - weight) + (uint64_t)colors[next] * weight) / 0xff;
+	    draw(color_now);
+	    if(weight++ == 0xff){
+	      index = next;
+	    }
+      next_time = now + divider;
+    }
+  }
+  return 0;
+}
+```
+
+
+
+做一个小游戏：
+
+我之前看到过生命游戏，非常有意思！而且规则足够简单，我完全可以在这个里面进行仿真
 
 
 
@@ -4163,11 +4357,35 @@ endmodule
 
 ```
 
+```verilog
+module top(
+  input clk,
+  input rst,
+  input [7:0] sw,
+  output [2:0] led,
+  output reg [7:0] seg0
+);
+wire [3:0] bcds;
+wire [7:0] segs [0:7];
+wire valid;
+assign led = bcds[2:0];
+PriorEncoder m_encoder(
+  .in(sw),
+  .en(1),
+  .out(bcds[2:0]),
+  .valid(valid)
+);
+assign bcds[3] = 0;
+bcd7seg m_seg (
+  .b(bcds),
+  .h(seg0)
+);
+endmodule
+```
 
 
-![image-20260827201554900](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20260827201554900.png)
 
-
+![image-20260909171834888](/images/image-20260909171834888.png)
 
 
 
@@ -4316,7 +4534,7 @@ end
 endmodule
 ```
 
-![image-20260907125857327](/home/jjh/.config/Typora/typora-user-images/image-20260907125857327.png)
+![image-20260907125857327](/images/image-20260907125857327.png)
 
 没问题，那么就可以上板子了，不过发现太快了，所以加了个分频：
 ```verilog
@@ -4370,7 +4588,7 @@ endmodule
 ```
 
 结果如下：
-![image-20260907202610278](/home/jjh/.config/Typora/typora-user-images/image-20260907202610278.png)
+![image-20260907202610278](/images/image-20260907202610278.png)
 
 
 
@@ -4439,8 +4657,8 @@ endmodule
 
 上板测试如下：
 
-![image-20260908125247980](/home/jjh/.config/Typora/typora-user-images/image-20260908125247980.png)
-![image-20260908125326063](/home/jjh/.config/Typora/typora-user-images/image-20260908125326063.png)
+![image-20260908125247980](/images/image-20260908125247980.png)
+![image-20260908125326063](/images/image-20260908125326063.png)
 
 
 
@@ -4598,7 +4816,9 @@ assign b[3] = data[7:4];
 endmodule
 ```
 
-但是我发现松开总是没法灭...我仔细想了想，问题似乎是我`parser`和`keyboard`都是在上升沿触发，那么即使我这次完成了消费也需要等一个周期后`keyboard`模块才会发现更新！而触发的时候我们的状态机接收到的还是上一个时刻的状态，因此一个数据会被多触发一次！这和我们的FIFO是不一致的，因此我引入了一个`WAIT`：此时问题好了很多，松手就能灭了，但是奇怪的是我必须反复按好几次才能完成更新。
+>  但是我发现松开总是没法灭...我仔细想了想，问题似乎是我`parser`和`keyboard`都是在上升沿触发，那么即使我这次完成了消费也需要等一个周期后`keyboard`模块才会发现更新！而触发的时候我们的状态机接收到的还是上一个时刻的状态，因此一个数据会被多触发一次！这和我们的FIFO是不一致的，因此我引入了一个`WAIT`：此时问题好了很多，松手就能灭了，但是奇怪的是我必须反复按好几次才能完成更新。
+>
+> 涉及显示的数据记得锁存。。。
 
 似乎问题是在我用了`data`...因为它不是被锁存的值...（而我们多数时间看到的data显然不是我们锁存的内容）
 
@@ -4755,7 +4975,7 @@ RGB并非所有时间都在传送像素信息，因为CRT的电子束从上一�
 
 
 
-![image-20260909143203781](/home/jjh/.config/Typora/typora-user-images/image-20260909143203781.png)
+![image-20260909143203781](/images/image-20260909143203781.png)
 
 
 
@@ -4769,7 +4989,7 @@ wire in_img = (h_addr > h_offset) & (h_addr < h_offset + 100) & (v_addr > v_offs
 assign vga_data = in_img ? vga_ram[(v_addr-v_offset)*100 + (h_addr - h_offset)] : 24'b0;
 ```
 
-![image-20260909153217418](/home/jjh/.config/Typora/typora-user-images/image-20260909153217418.png)
+![image-20260909153217418](/images/image-20260909153217418.png)
 
 没问题那就可以考虑根据周期改变我们的偏移量了，最终的代码：
 ```verilog
@@ -4859,7 +5079,72 @@ endmodule
 
 
 
+#### SCPU
+
+为了输出55 ，我决定采用double daddle来处理BCD：
+
+> 原理：
+>
+> - 每次取
 
 
 
+程序：
+
+r0==0，r3临时存储，r1存储结果，r2存储counter
+
+```c
+li r0, 10;
+li r1, 0;
+li r2, 0;
+li r3, 1;
+add r2, r2, r3;
+add r1, r1, r2;
+bner0 0x4, r2;
+out r1;
+bner0 0x8, r3; // halt
+```
+
+out : 01 00 01 00
+
+
+
+
+
+
+
+
+
+评估结果：
+
+STA：
+```
++-----------------------+-------------+------------+------------+---------------+-------+-------+-----------+                                                                
+| Endpoint              | Clock Group | Delay Type | Path Delay | Path Required | CPPR  | Slack | Freq(MHz) |                                                                
++-----------------------+-------------+------------+------------+---------------+-------+-------+-----------+                                                                
+| gpr.R[0]_3__reg_p:D   | core_clock  | max        | 0.553r     | 1.973         | 0.000 | 1.420 | 1722.867  |                                                                
+| gpr.R[1]_3__reg_p:D   | core_clock  | max        | 0.553r     | 1.973         | 0.000 | 1.420 | 1722.867  |                                                                
+| gpr.R[2]_3__reg_p:D   | core_clock  | max        | 0.553r     | 1.973         | 0.000 | 1.420 | 1722.867  |                                                                
+| gpr.R[1]_4__reg_p:D   | core_clock  | max        | 0.522f     | 1.955         | 0.000 | 1.433 | 1762.658  |                                                                
+| gpr.R[0]_4__reg_p:D   | core_clock  | max        | 0.522f     | 1.955         | 0.000 | 1.433 | 1762.658  |                                                                
+| output_val[7]_reg_p:D | core_clock  | min        | 0.099f     | -0.008        | 0.000 | 0.108 | NA        |                                                                
+| output_val[5]_reg_p:D | core_clock  | min        | 0.099f     | -0.008        | 0.000 | 0.108 | NA        |                                                                
+| output_val[0]_reg_p:D | core_clock  | min        | 0.099f     | -0.008        | 0.000 | 0.108 | NA        |                                                                
+| output_val[6]_reg_p:D | core_clock  | min        | 0.099f     | -0.008        | 0.000 | 0.108 | NA        |                                                                
+| output_val[1]_reg_p:D | core_clock  | min        | 0.099f     | -0.008        | 0.000 | 0.108 | NA        |                                                                
++-----------------------+-------------+------------+------------+---------------+-------+-------+-----------+   
+```
+
+PWR：
+
+```
++---------------+----------------+--------------+---------------+-------------+-----------+
+| Power Group   | Internal Power | Switch Power | Leakage Power | Total Power | (%)       |
++---------------+----------------+--------------+---------------+-------------+-----------+
+| combinational | 9.850e-04      | 0.000e+00    | 3.118e-07     | 9.854e-04   | (85.289%) |
+| sequential    | 1.697e-04      | 0.000e+00    | 3.024e-07     | 1.700e-04   | (14.711%) |
++---------------+----------------+--------------+---------------+-------------+-----------+
+I20260913 13:43:28.924620 319796 Power.cc:543] Total Power   ==  0.00115532 W
+
+```
 

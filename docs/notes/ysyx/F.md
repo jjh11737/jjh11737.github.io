@@ -269,15 +269,11 @@ $S_C = S_{ISA} = S_{CPU}$
 | li   | 立即数      | 1    | X      | PC++ |
 | ber0 | X           | 0    | 0      | addr |
 
-## f6 RISC-V 处理器
-
-**RTFW：**
+## f6 MINIRV 处理器
 
 关于RISCV：设计理念就是越简洁/越普适越好，不能因为特定处理器而针对设计
 
 首先作为一个ISA，我们要明确这里只讨论`unpreviledged instructions`即可以用户直接调用而无需kernel监管的CPU指令。
-
-
 
 然后就是考虑实现一个基本的处理器`minirv`。我们已经编译层面上把指令压缩成为了8个最基本的指令：
 
@@ -300,45 +296,138 @@ $S_C = S_{ISA} = S_{CPU}$
 
 ![the list of isa](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20260502235629987.png)
 
-首先很显然，这个ISA的低7位作为opcode,
-而且很独特的一点是几乎每条指令都是由`opcode(操作码)`和`funct(功能码)`决定，前者决定我们操作的大类，后者指定具体操作
-31 30 29 28 27 26 25 24 23 22 21 20 19 18 17 16 15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0
-<    imm                         >  <    rs1    >  < fc3 >  < rd      > <   opcode  > 
-< fc 3> refers to: ADDI / SLTI[U] / ANDI / ORI / XORI
-那么指令就很清晰了，< fc3 > < fc7 > < opcode > 都是要解码的部分，那么我们考虑做一个多级的解码？
+![image-20260922204441616](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20260922204441616.png)
 
 
 
-list：
+for RV32M:
+![image-20260922210728635](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20260922210728635.png)
 
-- [x] LUI
-- [x] JALR
-- [x] LW
-- [ ] LBU
-- [ ] SB
-- [ ] SW
-- [x] ADDI
-- [ ] ADD
+----
 
- addi: 0000 0000 0001 0000 1000 0000 1001 001
+阅读手册：
 
-测试指令：0x108093(rs1 = rd1 = x1, 即x1++)
+有关存储：
 
-JALR: (jump and link register):
+RISC-V的一个word被定义为32位也就是4字节：
 
-它的计算和addi很像，先计算出来imm1 + rs1，把它作为跳转值，同时这个值+4存入rd
+- `half-word`：16bits - 2bytes
+- `double-word`：64bits - 8bytes
+- `quad-word`：128bits - 16bytes
 
-0x100067(rs1 = rd = x0, imm = 1, 即跳转到0x1指令的位置)
+同时我们的地址是环形的，也就是说$2^{XLEN}-1$的下一个就是0地址。同时地址的计算会忽略溢出
 
-LUI：LOAD UPPER IMMEDIATE
-输入一个32位的常数（需要位扩展后移位）到rd
+> 全0的指令是非法的，我们这么定义是为了防止出现程序跑飞到未定义的地方，这样就可以及时抛出异常
 
-0000 0000 0000 0000 0000000 0000 0000 0000 0001 0001 10110111（rs1 = x3, imm[32:12] = 0x1 << 12）
+6种指令的格式：
 
-LW： LOAD WORD
-从内存加载一个32位的数到rd，地址是rs1 + imm（需符号扩展）
-0000 0000 0000 0000 0010 0001 1000 0011（imm[11:0] = 0, rs1 = x0, rd = x3）
+![image-20260910161304059](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20260910161304059.png)
 
-整体来说，除了U形指令我们都是符号扩展的
+- R-Register：寄存器
+- I-Immediate：12位立即数
+- S-Store：存储的偏移量，需要12位
+- B-Branch：让PC+offset
+- U-Upper Immediate：这个20位的数字会被左移12位变成一个32位立即数
+- J-Jump：
 
-LBU是U型指令，采用零扩展，输入一个字节扩展为32位
+而关于不同的Type的立即数如何扩展：
+![image-20260910163202081](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20260910163202081.png)
+
+
+
+说明一下
+
+> RV32I所有立即数的符号位都是被放到31位的
+
+
+
+指令的说明：
+
+整数计算：
+
+- 算术指令 add / sub 
+- 逻辑运算 and /or / xor
+- 移位指令 sll srl sra    
+- 小于则置位(set less than)：有符号slt / 无符号sltu / 立即数有符号slti / 立即数无符号sltiu
+- lui / auipc
+
+干的事情都是从源寄存器读取2个32位的值并且把结果写入目的寄存器
+
+而由于RV32I的立即数总是进行符号扩展，因此也能表示负数，无须subi这种指令
+
+---
+
+
+
+各个指令：
+
+- `addi`：
+
+  > ADDI adds the sign-extended 12-bit immediate to register rs1. Arithmetic overflow is ignored and the result is simply the low XLEN bits of the result. ADDI rd, rs1, 0 is used to implement the MV rd, rs1 assembler pseudoinstruction.
+
+  将12位符号扩展的立即数加到rs1里面，算术溢出被忽略，输出的就是结果的低32位。
+
+  换句话说就是对高12位做一个符号扩展然后放到ALU里面加法
+
+- `add`：
+
+  > ADD performs the addition of rs1 and rs2. SUB performs the subtraction of rs2 from rs1. Overflows are ignored and the low XLEN bits of results are written to the destination rd. SLT and SLTU perform signed and unsigned compares respectively, writing 1 to rd if rs1 < rs2, 0 otherwise. Note, SLTU rd, x0, rs2 sets rd to 1 if rs2 is not equal to zero, otherwise sets rd to zero (assembler pseudoinstruction SNEZ rd, rs). AND, OR, and XOR perform bitwise logical operations
+
+  忽略溢出，寄存器作加法就对了
+
+- `LUI`：
+
+  > LUI (load upper immediate) is used to build 32-bit constants and uses the **U-type format**. LUI places the 32-bit U-immediate value into the destination register rd, filling in the lowest 12 bits with zeros.
+
+  把这个U-type的值放入`rd`
+
+- `LW`：
+
+  > The LW instruction loads a 32-bit value from memory into rd. LH loads a 16-bit value from memory, then sign-extends to 32-bits before storing in rd. LHU loads a 16-bit value from memory but then zero extends to 32-bits before storing in rd. LB and LBU are defined analogously for 8-bit values. The SW, SH, and SB instructions store 32-bit, 16-bit, and 8-bit values from the low bits of register rs2 to memory.
+
+  从主存里面加载一个32位的值存入`rd`，看指令格式是I-type
+
+- `LBU`：
+
+  从主存里面加载一个8位的值，零扩展到32位存入`rd`
+
+- `SW`：
+
+  从`rs2`读取一个32位值，立即数是S-type，存入`rs1 + imm`的内存里面
+
+- `SB`：
+
+  从`rs2`读一个8位的值（丢弃高位），存入`rs1+imm`里面
+
+- `JALR`
+
+  > The indirect jump instruction JALR (jump and link register) uses the I-type encoding. The target address is obtained by adding the sign-extended 12-bit I-immediate to the register rs1, then setting the least-significant bit of the result to zero. The address of the instruction following the jump (pc+4) is written to register rd. Register x0 can be used as the destination if the result is not required.
+
+  把这个I-type的立即数加到`rs1`上，并把最低位清零，然后把pc+4存入`rd`，下个周期的PC设为计算的结果
+
+![image-20260911105246026](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20260911105246026.png)
+
+> 其实本来一开始就是对的了。。。结果我以为这个程序非常的primitive，应该有数据也会用立即数搞定，但是我想错了。。。实际上RAM里面也要存储数据表，结果就是明明早就对了然后反复验证没搞懂问题在哪里，最后反汇编一条条推对照指令找到了有一条奇怪的从RAM加载的指令，但是明明RAM为空啊？然后我就发现不对劲了。。。
+
+
+
+
+
+
+
+VGA：
+
+这个就更简单了，无非就是看一下地址区分一下在写入哪里罢了。。。xy直接splitter就行了，最终结果如下：
+![image-20260911114043739](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20260911114043739.png)
+
+
+
+
+
+为什么是RISC？
+
+更小的指令集意味着：
+
+- 更小的芯片面积
+- 更简单的设计和验证，也就是更少的人力成本
+- 很多复杂的CISC命令其实压根用不到，因为最后译码后都是uop...，这反而因为依赖关系会导致执行的时钟周期更多（因为现在超标量处理器早就不是以前那样了）
