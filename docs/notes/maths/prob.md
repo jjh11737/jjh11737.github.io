@@ -481,3 +481,54 @@ $$
 F_X(x)=\lim_{y\to +\infty}F(x,y)=F(x,+\infty)\\
 F_Y(y)=\lim_{x\to +\infty}F(x,y)=F(+\infty,y)
 $$
+而显然这两个是对原本的$F(x,y)$的降维，所以往往我们无法从边缘分布函数得到原分布函数
+
+##### 边缘分布律
+
+设离散随机变量$(X,Y)$的分布律：
+$$
+P\{X=x_i, Y=y_i\}=p_{ij}
+$$
+那么$(X,Y)$关于$X$或$Y$的边缘分布律：
+$$
+P\{X=x_i\}=\sum_j P\{X=x_i,Y=y_j\}=\sum_j p_{ij} \\
+P\{Y=y_i\}=\sum_i P\{X=x_i,Y=y_j\}=\sum_i p_{ij}
+$$
+![image-20260928100506073](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20260928100506073.png)
+
+##### 条件分布律
+
+已知二维离散型随机变量$(X,Y)$的分布律：
+$$
+P\{X=x_i, Y=y_i\}=p_{ij}
+$$
+那么当$P\{X=x_i\}>0$时称这个为在$X=x_i$条件下$Y$的分布律：
+$$
+P\{X=x_i|Y=y_i\}=\frac {P\{X=x_i, Y=y_i\}}{P\{X=x_i\}}
+$$
+
+> 例：
+>
+> ![image-20260928101357733](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20260928101357733.png)
+
+##### 边缘概率密度
+
+我们已知边缘分布函数：
+$$
+F(x,y)=\int_{-\infty}^{x}\int_{-\infty}^{y}f(u,v)dvdu\\
+\to F_X(x)=F(x,+\infty)=\int_{-\infty}^{x}[\int_{-\infty}^{+\infty}f(u,v)dv]du \\
+\to f_X(x)=\int_{-\infty}^{+\infty}f(x,y)dy1
+$$
+
+
+##### 条件概率密度
+
+对于二维连续性随机变量$(X,Y)$，
+
+
+
+
+
+##### 独立性：
+
+如果$f(x,y)=f_X(x)\cdot f_Y(y)$，那么就等价于独立的
