@@ -12,3 +12,5 @@ chmod 600 /home/jjh/.ssh/authorized_keys
 ```
 
 然后修改`/etc/sshd_config`，确保禁用`PasswordAuthenticatioin` / `PermitRootLogin`这两个，都设为no
+
+> 暂时就到这里吧，我之后再接着玩
