@@ -1156,6 +1156,8 @@ void switcher(long a, long b, long c, long *dest){
 
 
 
+
+
 #### 3.7.2 转移控制
 
 ##### 返回地址
@@ -6497,3 +6499,144 @@ void free(void *ptr);
 
   对每个打开的文件，内核都保持着一个
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## 12 并发
+
+并发不仅仅是操作系统内核用来运行多个应用程序的机制，它也可以在应用程序中发挥作用，比如在这些场景：
+
+- 访问慢速I/O设备
+- 与人交互
+- 通过推迟工作来降低延迟
+- 服务多个网络客户端
+- 在多核机器上并行计算
+
+现代操作系统提供了3种基本的构造并发程序的的方法：
+
+- 进程
+- I/O 多路复用
+- 线程
+
+
+
+### 12.1 基于进程的并发
+
+这是最简单我们也最熟悉的了，就是`execve` / `fork` / `waitpid`...
+
+> 比如构建一个并发服务器的很自然的方法是在父进程中接收客户端的连接请求然后创建一个新的子进程
+
+#### 一个基于进程的并发服务器：
+
+```c
+#include "csapp.h"
+void echo(int connfd);
+void sigchld_handler(int sig){
+    while(wait_pid(-1, 0, WNOHANG) > 0);		// handle all the exited children
+    return;
+}
+int main(int argc, char **argv){
+    int listenfd, connfd;
+    socklen_t clientlen;
+    struct sockaddr_storage clientaddr;
+    if (argc != 2){
+        fprintf(stderr, "usage: %s <port>\n", argv[0]);
+        exit(0);
+    }
+    Signal(SIGCHLD, sigchld_handler);
+    listenfd = Open_listenfd(argv[1]);
+    while(1){
+        clientlen = sizeof(struct sockaddr_storage);
+        connfd = Accept(listenfd, (SA *)&clientaddr, &clientlen);
+        if (Fork() == 0){
+            Close(listenfd);
+            echo(connfd);
+            Close(connfd);
+            exit(0);
+        }
+        Close(connfd);
+    }
+}
+```
+
+
+
+#### 优劣
+
+进程是共享fd文件表，但是不共享用户地址空间的，这有优缺点：
+
+- 优点：
+
+  我们不可能会出现一个进程不小心覆盖另一个进程的虚拟内存的情况
+
+- 缺点：
+
+  - 独立的地址空间让进程共享状态信息变得困难，他们必须使用显示的IPC(进程间通信)机制
+  - 这太慢了，不管是进程控制还是IPC开销都很高
+
+> 事实上IPC我们早就接触了！我们之前接触的`waitpid`函数就是最基础的IPC机制，而套接字接口也是一种
+
+
+
+### 12.2 基于I/O多路复用的并发编程
