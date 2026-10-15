@@ -43,6 +43,13 @@ enableEmoji = true
   [markup.highlight]
     noClasses = false
     lineNos = false
+  # 把 $...$ / $$...$$ 原样透传，交给页面里的 KaTeX 渲染
+  # （不开这个，Goldmark 会先把公式里的 _ * \ 之类吃掉）
+  [markup.goldmark.extensions.passthrough]
+    enable = true
+    [markup.goldmark.extensions.passthrough.delimiters]
+      block = [['$$', '$$']]
+      inline = [['$', '$']]
 
 # ------------------------------------------------------------
 #  站点参数

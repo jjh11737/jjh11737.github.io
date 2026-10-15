@@ -87,6 +87,27 @@ PaperMod 用本地 Fuse.js，没有任何外部服务：
 - 不想被搜到的页面加 `searchHidden: true`
 - 正文量大之后 `index.json` 会变大（现在是几 KB 级），如果哪天到几百 KB，就把 `[params.fuseOpts]` 的 `keys` 里的 `content` 去掉，只搜标题
 
+## 隐藏的笔记区
+
+原来的 VitePress 知识库整体搬到了 `/n7k4xq/` 下面。页面上没有任何入口，只能直接输 URL 进。
+
+这个路径就是目录名本身：想换路径，重命名 `content/n7k4xq/` 就行，别的什么都不用改（模板里没有硬编码这个前缀，判断条件用的都是 frontmatter 标志）。
+
+它被排除在这些出口之外，每一条都实测过：
+
+| 出口 | 靠什么关掉 |
+| --- | --- |
+| 首页“最近”流、归档页 | 不在 `params.mainSections` 里 |
+| 全站 RSS / 分节 RSS | 各层 `_index.md` 的 `outputs: ["HTML"]`，再加 cascade 的 `hiddenInRss` |
+| 搜索索引 `/index.json` | cascade 的 `searchHidden` |
+| `sitemap.xml` | cascade 的 `sitemap.disable` |
+| 搜索引擎收录 | cascade 的 `robotsNoIndex` → 输出 `<meta name="robots" content="noindex, nofollow">` |
+| 顶部导航 | 没写进 menu |
+
+数学公式靠自托管的 KaTeX（`static/vendor/katex/`，不依赖 CDN，境外 CDN 在国内不稳）。这一区默认 `math: true`；其他区想写公式，在 frontmatter 里加一行 `math: true` 即可，页面才会加载 KaTeX。
+
+**说清楚：这不是访问控制。** 拿到 URL 的任何人、以及翻仓库的人，都能看到这些笔记。要真正的私有只有两条路——把这一区挪到 VPS 上用 HTTP basic auth 挡，或者挂 Cloudflare Access。
+
 ## 部署
 
 `.github/workflows/deploy.yml` 会在 `main` 分支推送后构建并发布到 GitHub Pages。
@@ -123,10 +144,13 @@ git submodule update --remote --merge     # 升级主题
 
 ```
 content/          四种内容 + about / search / archives
+content/n7k4xq/   隐藏的笔记区（旧知识库搬过来的地方，路径即目录名）
 layouts/          首页动态流、短记时间线、阅读音乐列表、图片渲染钩子
 assets/css/extended/custom.css   自己的样式（会被自动拼接进主题样式表）
 archetypes/       blog new 之外的 hugo new 模板
 scripts/blog      发布 CLI
 nvim/blog.lua     nvim 集成示例
+static/images/    文章里 /images/xxx.png 引用的图片
+static/vendor/    自托管的 KaTeX
 .github/workflows/deploy.yml     构建 + 部署
 ```
