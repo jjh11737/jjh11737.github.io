@@ -1,6 +1,9 @@
-{{- /* 笔记区首页：分节列出全部笔记 + 标签云（点击就地过滤）+ 自己的搜索入口 */ -}}
+{{- /* 笔记区的栏目页（顶部导航“笔记”指向这里）。
+       只列出**已公开**的笔记（frontmatter 里 hiddenInRss: false，也就是 blog vis ... public 写的值）；
+       没公开的笔记不会出现在这里，只能走 /n7k4xq/search/ 或直达链接。
+       标签云同样只统计这些公开笔记；点击标签就地过滤，用内联样式切换（不依赖 [hidden]，避免被 CSS 的 display 覆盖）。 */ -}}
 {{- define "main" }}
-{{- $all := .RegularPagesRecursive }}
+{{- $all := where .RegularPagesRecursive "Params.hiddenInRss" false }}
 
 <header class="page-header">
   <h1>{{ .Title }}</h1>
@@ -14,11 +17,11 @@
 {{- end }}
 
 <div class="notes-toolbar">
-  <a class="notes-search-link" href="{{ "n7k4xq/search/" | relURL }}">搜索这些笔记 →</a>
-  <span class="notes-count">共 {{ len $all }} 篇</span>
+  <a class="notes-search-link" href="{{ "n7k4xq/search/" | relURL }}">搜索全部笔记 →</a>
+  <span class="notes-count">公开 {{ len $all }} 篇</span>
 </div>
 
-{{- /* 标签云：从每篇的 noteTags 统计 */ -}}
+{{- /* 标签云：只统计公开笔记 */ -}}
 {{- $counts := dict }}
 {{- range $all }}
   {{- range .Params.noteTags }}
@@ -33,23 +36,32 @@
 </div>
 {{- end }}
 
+{{- if $all }}
 {{- range .Sections }}
-<section class="note-group" data-note-group>
-  <h2 class="note-group-head">
-    {{ .Title }}<sup class="note-group-count">{{ len .RegularPagesRecursive }}</sup>
-  </h2>
-  <ul class="note-list">
-    {{- range .RegularPagesRecursive.ByDate.Reverse }}
-    <li class="note-item" data-note="{{ with .Params.noteTags }}{{ delimit . " " }}{{ end }}">
-      <a class="note-item-title" href="{{ .RelPermalink }}">{{ .Title }}</a>
-      <time class="note-item-date">{{ .Date.Format "2006-01-02" }}</time>
-      {{- with .Params.noteTags }}
-      <span class="note-item-tags">{{ range . }}#{{ . }} {{ end }}</span>
+  {{- $sec := . }}
+  {{- $pub := where .RegularPagesRecursive "Params.hiddenInRss" false }}
+  {{- with $pub }}
+  <section class="note-group" data-note-group>
+    <h2 class="note-group-head">{{ $sec.Title }}<sup class="note-group-count">{{ len $pub }}</sup></h2>
+    <ul class="note-list">
+      {{- range .ByDate.Reverse }}
+      <li class="note-item" data-note="{{ with .Params.noteTags }}{{ delimit . " " }}{{ end }}">
+        <a class="note-item-title" href="{{ .RelPermalink }}">{{ .Title }}</a>
+        <time class="note-item-date">{{ .Date.Format "2006-01-02" }}</time>
+        {{- with .Params.noteTags }}
+        <span class="note-item-tags">{{ range . }}#{{ . }} {{ end }}</span>
+        {{- end }}
+      </li>
       {{- end }}
-    </li>
-    {{- end }}
-  </ul>
-</section>
+    </ul>
+  </section>
+  {{- end }}
+{{- end }}
+{{- else }}
+<p class="notes-empty">
+  这个栏目里还没有公开的笔记。把某篇笔记设成公开，它就会出现在这里——在 nvim 里按 <code>&lt;leader&gt;bv</code> 选 public，
+  或者跑 <code>blog vis content/n7k4xq/…/xxx.md public</code>，然后 <code>blog save</code>。
+</p>
 {{- end }}
 
 <script>
@@ -65,10 +77,10 @@
         for (var i = 0; i < items.length; i++) {
           var tags = (items[i].getAttribute('data-note') || '').trim().split(/\s+/);
           var ok = !active || tags.indexOf(active) >= 0;
-          items[i].hidden = !ok;
+          items[i].style.display = ok ? '' : 'none';
           if (ok) shown++;
         }
-        groups[g].hidden = shown === 0;
+        groups[g].style.display = shown === 0 ? 'none' : '';
       }
       for (var c = 0; c < chips.length; c++) {
         chips[c].classList.toggle('active', chips[c].getAttribute('data-tag') === active);

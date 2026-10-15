@@ -325,3 +325,19 @@
 .note-item-date {
   margin-left: auto;
 }
+
+/* 即使 JS 用内联样式切换，这里也兜一层，防止 CSS 的 display 覆盖 [hidden] */
+.note-item[hidden],
+.note-group[hidden] {
+  display: none !important;
+}
+
+.notes-empty {
+  padding: 0.8rem 0.4rem;
+  font-size: 0.9rem;
+  color: var(--secondary);
+}
+
+.notes-empty code {
+  font-size: 0.85rem;
+}

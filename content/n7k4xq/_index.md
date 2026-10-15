@@ -1,14 +1,26 @@
 ---
 title: "笔记"
-outputs: ["HTML", "NotesJSON"] # 关掉这个分支的 RSS，另出一个自己的搜索索引
+description: "公开的笔记。没公开的只在这里的搜索页里能翻到"
+# HTML 给栏目页，NotesJSON 给只搜笔记的搜索索引，RSS 是这一区自己的 feed
+outputs: ["HTML", "NotesJSON", "RSS"]
+# 这一页是公开栏目，所以自己要被收录；下面的 cascade 才是“默认藏起来”
+hiddenInRss: true
+robotsNoIndex: false
+sitemap:
+  disable: false
+# 告诉 layouts/rss.xml：这一区单独出一份 feed
+noteFeed: true
 cascade:
-  hiddenInRss: true     # 不进首页/全站 feed
-  searchHidden: true    # 不进搜索索引
-  robotsNoIndex: true   # 输出 <meta name="robots" content="noindex, nofollow">
+  hiddenInRss: true     # 默认：不进任何 feed（被 blog vis 设成 public 的会变 false，但主页 feed 仍然不收笔记）
+  searchHidden: true    # 默认：不进全站搜索索引
+  robotsNoIndex: true   # 默认：输出 <meta name="robots" content="noindex, nofollow">
   math: true            # 加载自托管 KaTeX
-  badge: "笔记"          # 被公开后，在首页“最近”流里显示的徽标
+  badge: "笔记"          # 公开后在首页“最近”流里显示的徽标
   sitemap:
-    disable: true       # 不进 sitemap.xml
+    disable: true       # 默认：不进 sitemap.xml
 ---
 
-我的各种笔记
+这里列出的都是被设为公开的笔记。没公开的笔记不会出现在这个列表里，
+只能用 `/n7k4xq/search/` 搜，或者从直达链接进。
+
+把一篇笔记放上来：编辑器里 `<leader>bv` 选 public，或者 `blog vis <文件> public`，然后 `blog save`。
