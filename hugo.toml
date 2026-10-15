@@ -69,7 +69,7 @@ enableEmoji = true
   DateFormat = "2006-01-02"
   defaultTheme = "auto"
 
-  ShowReadingTime = true
+  ShowReadingTime = false
   ShowWordCount = false
   ShowShareButtons = false
   ShowCodeCopyButtons = true
