@@ -1,3 +1,11 @@
+---
+draft: false
+hiddenInRss: false
+searchHidden: false
+robotsNoIndex: false
+sitemap:
+  disable: false
+---
 # D阶段记录
 
 >  D1 -> PA2阶段1
@@ -610,5 +618,124 @@ NEMU实现了端口映射和内存映射，但无论如何本质都是映射，�
 - `init_alarm`设置定时器
 
 另一方面，`cpu_exec()`在执行每条指令后都会调用`device_update()`来更新设备状态
+
+### 输入输出抽象为IOE
+
+NEMU的VGA显存放在物理地址`0xa10000000,0xa1080000`范围，但是这是一个不可访问的非法区间(对于native)，这件事应该让AM来管，我们同样只能通过对应的API实现，也即IOE，三个API在`src/native/ioe.c`里面
+```c
+bool ioe_init() {
+  panic_on(cpu_current() != 0, "call ioe_init() in other CPUs");
+  panic_on(ioe_init_done, "double-initialization");
+  __am_has_ioe = true;
+  return true;
+}
+void ioe_read (int reg, void *buf) { do_io(reg, buf); }
+void ioe_write(int reg, void *buf) { do_io(reg, buf); }
+```
+后两个用于从编号为`reg`的寄存器里面读出内容到缓冲区`buf`，但是这个寄存器并非真实的设备的寄存器，仅仅是作为抽象
+
+- 在`am/include/amdev.h`里面明确了常见设备的寄存器编号和结构
+- 在`klib-macros.h`里面进一步把 `ioe_read / write` 封装为了`io_read/write`的宏:
+    ```c
+    #define io_read(reg) \
+      ({ reg##_T __io_param; \
+        ioe_read(reg, &__io_param); \
+        __io_param; })
+
+    #define io_write(reg, ...) \
+      ({ reg##_T __io_param = (reg##_T) { __VA_ARGS__ }; \
+        ioe_write(reg, &__io_param); })
+    ```
+
+因此我们只需要在`abstract-machine/am/src/platform/nemu/ioe/`里面实现一份即可全部共享
+
+#### 串口
+
+最简单的输出设备，`nemu/src/device/serial.c`里面模拟了串口的功能，这里只保留了最基本的数据寄存器，初始化的时候会注册`0x3f8`处长度为8个字节的端口，以及`0xa00003f8`的8字节的MMIO空间，它们都会被映射到串口的数据寄存器上，当cpu向数据寄存器里面写入数据时，它就会将数据传送到主机的stderr里面
+> 但是我们之前为什么TRM里面也有自己的putchar? 因为哪怕是图灵机也是需要输出的啊...
+
+`abstract-machine/am/src/platform/nemu/trm.c`里面`putch`就会把字符输出到串口里面
+
+> 我们之前就接触过了，`mainargs`被传送到`main`里面，但是具体是如何传输的?
+实际上我们先前已经接触过了，还记得那个`python`的调用吗？使用的脚本是`abstract-machine/tools/insert-arg.py`:
+（它在`abstract-machine/scripts/platform/npc.mk`还是`nemu.mk`里面都调用了一句：
+```makefile
+17:MAINARGS_PLACEHOLDER = the_insert-arg_rule_in_Makefile_will_insert_mainargs_here
+20:insert-arg: image
+21:     @python3 $(AM_HOME)/tools/insert-arg.py $(IMAGE).bin $(MAINARGS_MAX_LEN) $(MAINARGS_PLACEHOLDER) "$(mainargs)"
+```
+这里就是让python来替换，告诉了目标的`.bin`文件/最大长度/placeholder(?)/参数，我们看看它的脚本：
+```python
+#!/usr/bin/env python3
+
+from sys import argv
+
+bin = argv[1]
+max_len = int(argv[2])
+placeholder = argv[3]
+mainargs = argv[4]
+
+if len(mainargs) >= max_len:
+    print("Error: mainargs should not be longer than {0} bytes\n".format(max_len))
+    exit(1)
+print("mainargs={0}".format(mainargs))
+
+fp = open(bin, 'r+b')
+data = fp.read()
+idx = data.find(str.encode(placeholder))
+if idx == -1:
+    print("Error: placeholder not found!\n")
+    exit(1)
+fp.seek(idx)
+mainargs_pad = str.encode(mainargs) + ((max_len - len(mainargs)) * str.encode("\0"))
+if len(mainargs_pad) != max_len:
+    print("Error: len(mainargs_pad) != max_len\n")
+    exit(1)
+fp.write(mainargs_pad)
+fp.close()
+```
+我应该看懂了，似乎就是搜索一个占位符，而且可以预期这个就是一个长度固定的静态编译期常量数组，把它当作`main`的输入，而这个脚本干的事情就是在这个已经经过处理后的二进制文件里面找到这个同名的。但是有点不对，这个`.mk`里面的字符串，我`wc -m`了一下，明明长度是57个？前面加了:
+```makefile
+MAINARGS_MAX_LEN = 64
+MAINARGS_PLACEHOLDER = the_insert-arg_rule_in_Makefile_will_insert_mainargs_here
+CFLAGS += -DMAINARGS_MAX_LEN=$(MAINARGS_MAX_LEN) -DMAINARGS_PLACEHOLDER=$(MAINARGS_PLACEHOLDER)
+```
+这个倒是很明确，就是编译时先去替换一下这些内容，但是我还是想搞明白具体发生了什么...
+那么就再次`rg`一下，我们知道这里`image: image-dep`要求一个东西，它就在`abstract-machine/Makefile`里面，发现就是`image-dep: $(IMAGE).elf`！也就是说我们需要先生成一个`elf`目标文件，然后在`image`里面`objdump`->`.txt`/`objcopy`->`.bin`，后者应该是经过处理去掉elf头之类的纯粹的指令和只读数据
+再看是如何生成`$(IMAGE).elf`的：
+```makefile
+$(IMAGE).elf: $(LINKAGE) $(LDSCRIPTS)
+	@echo \# Creating image [$(ARCH)]
+	@echo + LD "->" $(IMAGE_REL).elf
+ifneq ($(filter $(ARCH),native),)
+	@$(CXX) -o $@ -Wl,--whole-archive $(LINKAGE) -Wl,-no-whole-archive $(LDFLAGS_CXX)
+else
+	@$(LD) $(LDFLAGS) -o $@ --start-group $(LINKAGE) --end-group
+endif
+```
+嗯，前面我们对每个文件都生成了`.o`的可重定位目标文件，其中`CFLAGS`里面就包含了替换操作，也就是说它会找到所有名为``的然后替换为对应的内容，而刚好它就在`trm.c`里面：
+```c
+12:static const char mainargs[MAINARGS_MAX_LEN] = TOSTRING(MAINARGS_PLACEHOLDER); // defined in CFLAGS
+25:void _trm_init() {
+26:  int ret = main(mainargs);
+27:  halt(ret);
+28:}
+```
+这方法确实很妙啊！我们这样最后在`_trm_init`里面调用`main`把参数传入就好了！
+
+> 而且实际上，我们最后链接时ld压根就不关心你实现的是什么... 毕竟符号解析时只知道有一个叫`main`的东西然后把它替换为地址罢了，比如一个很搞笑的例子：
+> ```c
+> // file1.c
+> int f(int x);
+> int main(){
+>     printf("f(1)=%d", f(1));
+> }
+> // file2.c
+> int f(int x, int y, int z){
+>     return x + y + z;
+> }
+> ```
+> 我们先分别编译然后链接，然后你就会发现结果完全是随机的...
+
 
 

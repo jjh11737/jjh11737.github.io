@@ -1,8 +1,13 @@
 ---
 title: "计算机组成与设计"
 date: 2026-08-29T00:00:00+08:00
-draft: false
 noteTags: ["计算机", "cache", "RISC-V"]
+draft: false
+hiddenInRss: false
+searchHidden: false
+robotsNoIndex: false
+sitemap:
+  disable: false
 ---
 
 

@@ -7,7 +7,7 @@ hiddenInRss: true
 
 你好，我是 jjh。
 
-更系统的学习笔记在 [笔记](https://jjh11737.github.io/n7xk4xq)
+笔记在 [笔记](https://jjh11737.github.io/n7xk4xq)
 
 ## 联系
 

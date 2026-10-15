@@ -2,8 +2,13 @@
 title: "E阶段
 "
 date: 2026-09-27T00:00:00+08:00
-draft: false
 noteTags: ["ysyx", "汇编", "Linux", "调试", "数字电路", "cache"]
+draft: false
+hiddenInRss: false
+searchHidden: false
+robotsNoIndex: false
+sitemap:
+  disable: false
 ---
 
 
