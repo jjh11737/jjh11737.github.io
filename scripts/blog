@@ -5,7 +5,7 @@
 #  日常只会用到这几条：
 #    blog post "标题"         新建一篇文章（content/post/，公开；blog article 是别名）
 #    blog note "标题" [分区]  新建一篇笔记（content/note/，默认 draft 不发布；blog wiki 是别名）
-#    blog ub <分类> "标题"    新建一条 UB 条目，如 blog ub reading "《书名》"
+#    blog ub <分类> "标题"    新建一条 UB 条目，如 blog ub essay "随笔标题"
 #    blog save <文件>         提交并推送指定文件（nvim 的 <leader>bp 调的就是它）
 #
 #  其他：
@@ -110,7 +110,7 @@ cmd_new() {
 # ------------------------------------------------------------
 #  UB 栏目的条目
 #
-#    blog ub <分类> "标题" [标签]   分类 = content/ub/ 下的目录（reading / music / 以后加的）
+#    blog ub <分类> "标题" [标签]   分类 = content/ub/ 下的目录（essay / music / 以后加的）
 # ------------------------------------------------------------
 cmd_ub() {
   local kind="${1:-}" title="${2:-}" tagarg="${3:-}"
