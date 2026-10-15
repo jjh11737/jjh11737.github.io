@@ -65,7 +65,7 @@ enableEmoji = true
 # ------------------------------------------------------------
 [params]
   author = "jjh"
-  description = "折腾、阅读与音乐"
+  description = ""
   DateFormat = "2006-01-02"
   defaultTheme = "auto"
 
@@ -101,8 +101,8 @@ enableEmoji = true
   [params.profileMode]
     enabled = true
     title = "jjh"
-    subtitle = "折腾 · 阅读 · 音乐"
-    imageUrl = ""
+    subtitle = ""
+    imageUrl = "https://avatars.githubusercontent.com/u/250367270"
     imageWidth = 120
     imageHeight = 120
 
