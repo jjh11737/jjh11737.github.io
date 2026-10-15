@@ -6,7 +6,7 @@
     python3 scripts/tag.py --clear [文件...]  # 删掉自动写的标签 key
 
 规则表：scripts/tag-rules.tsv（格式见文件内注释）。
-post 栏（content/post/）写的是 noteTags —— 这是一个普通字段，不是 Hugo 分类法，
+note 栏（content/note/）写的是 noteTags —— 这是一个普通字段，不是 Hugo 分类法，
 所以不会生成公开的标签页；其他区域写 tags，会生成 /tags/ 页面和对应的 feed。
 """
 
@@ -16,7 +16,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RULES = os.path.join(ROOT, "scripts", "tag-rules.tsv")
-NOTES_PREFIX = "content/post/"
+NOTES_PREFIX = "content/note/"
 THRESHOLD = 3  # 关键词只在正文里出现时，至少要命中这么多次
 MAX_TAGS = 6
 

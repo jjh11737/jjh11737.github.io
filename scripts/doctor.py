@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONTENT = os.path.join(ROOT, "content")
-KNOWN_DIRS = ("posts", "post", "ub")
+KNOWN_DIRS = ("post", "note", "ub")
 
 errors, warnings = [], []
 
@@ -76,7 +76,7 @@ def check(rel, text):
     parts = rel.split(os.sep)
     if len(parts) > 2 and parts[1] not in KNOWN_DIRS:
         warnings.append("%s：不在已知栏目目录里（%s），可能放错地方了" % (rel, " / ".join(KNOWN_DIRS)))
-    if len(parts) > 1 and parts[1] == "post":
+    if len(parts) > 1 and parts[1] == "note":
         if not re.search(r"^noteTags:", fm, re.M):
             warnings.append("%s：还没有 noteTags（可以跑 blog tag --apply 生成）" % rel)
     if " " in os.path.basename(rel):

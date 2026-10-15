@@ -81,7 +81,7 @@ enableEmoji = true
   ShowFullTextinRSS = true # RSS 输出全文（<content:encoded>）
 
   # 首页“最近”流和归档页会抓这几个 section
-  mainSections = ["posts", "ub"]
+  mainSections = ["post", "ub"]
 
   # 首页“最近”显示条数（自定义模板 layouts/_partials/home_recent.html 读取）
   homeRecentCount = 8
@@ -107,11 +107,11 @@ enableEmoji = true
     imageHeight = 120
 
     [[params.profileMode.buttons]]
-      name = "文章"
-      url = "/posts/"
-    [[params.profileMode.buttons]]
       name = "post"
       url = "/post/"
+    [[params.profileMode.buttons]]
+      name = "note"
+      url = "/note/"
     [[params.profileMode.buttons]]
       name = "UB"
       url = "/ub/"
@@ -132,12 +132,12 @@ enableEmoji = true
 #  导航
 # ------------------------------------------------------------
 [[menu.main]]
-  name = "文章"
-  url = "/posts/"
-  weight = 10
-[[menu.main]]
   name = "post"
   url = "/post/"
+  weight = 10
+[[menu.main]]
+  name = "note"
+  url = "/note/"
   weight = 15
 [[menu.main]]
   name = "UB"

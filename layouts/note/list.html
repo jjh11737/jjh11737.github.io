@@ -2,7 +2,7 @@
 
        只列出**已公开**的笔记：判据是 frontmatter 里的 hiddenInRss: false，
        也就是 `blog vis <文件> public` 写进去的值。没公开的笔记不出现在这里，
-       只能走 /post/search/ 或直达链接。
+       只能走 /note/search/ 或直达链接。
 
        两种页面共用一个模板：
          /post/         有 .Sections，按分节（CS / 电子 / 数学 / 工具 / ysyx / 其他）分组
@@ -26,7 +26,7 @@
 {{- end }}
 
 <div class="notes-toolbar">
-  <a class="notes-search-link" href="{{ "post/search/" | relURL }}">搜索全部笔记 →</a>
+  <a class="notes-search-link" href="{{ "note/search/" | relURL }}">搜索全部笔记 →</a>
   <span class="notes-count">公开 {{ len $all }} 篇</span>
 </div>
 
@@ -53,20 +53,20 @@
   <section class="note-group" data-note-group>
     <h2 class="note-group-head">{{ $sec.Title }}<sup class="note-group-count">{{ len $pub }}</sup></h2>
     <ul class="note-list">
-      {{- range .ByDate.Reverse }}{{ partial "post_item.html" . }}{{ end }}
+      {{- range .ByDate.Reverse }}{{ partial "note_item.html" . }}{{ end }}
     </ul>
   </section>
   {{- end }}
   {{- end }}
   {{- with $own }}
   <section class="note-group" data-note-group>
-    <ul class="note-list">{{ range .ByDate.Reverse }}{{ partial "post_item.html" . }}{{ end }}</ul>
+    <ul class="note-list">{{ range .ByDate.Reverse }}{{ partial "note_item.html" . }}{{ end }}</ul>
   </section>
   {{- end }}
 {{- else }}
 <p class="notes-empty">
   这里还没有公开的笔记。把某篇设成公开它就会出现——nvim 里按 <code>&lt;leader&gt;bv</code> 选 public，
-  或者跑 <code>blog vis content/post/…/xxx.md public</code>，然后 <code>blog save</code>。
+  或者跑 <code>blog vis content/note/…/xxx.md public</code>，然后 <code>blog save</code>。
 </p>
 {{- end }}
 

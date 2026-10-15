@@ -3,8 +3,8 @@
 #  blog —— 个人主页的发布工具
 #
 #  日常只会用到这几条：
-#    blog post "标题" [分区]  新建一篇 post（笔记，content/post/，默认 draft 不发布）
-#    blog article "标题"      新建一篇文章（content/posts/，公开）
+#    blog post "标题"         新建一篇文章（content/post/，公开；blog article 是别名）
+#    blog note "标题" [分区]  新建一篇笔记（content/note/，默认 draft 不发布；blog wiki 是别名）
 #    blog ub <分类> "标题"    新建一条 UB 条目，如 blog ub reading "《书名》"
 #    blog save <文件>         提交并推送指定文件（nvim 的 <leader>bp 调的就是它）
 #
@@ -21,7 +21,7 @@ set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "$(readlink -f -- "$0")")/.." && pwd)"
 CONTENT="$ROOT/content"
-TYPES=(posts)
+TYPES=(post)
 
 die() { printf '\033[31m×\033[0m %s\n' "$*" >&2; exit 1; }
 ok() { printf '\033[32m✓\033[0m %s\n' "$*" >&2; }
@@ -68,7 +68,7 @@ frontmatter() { # $1=type $2=title $3=datetime $4=tags
   printf 'date: %s\n' "$ts"
   printf 'draft: false\n'
   case "$t" in
-    posts)   printf 'tags: %s\ncategories: []\nsummary: ""\n' "$tags" ;;
+    post)    printf 'tags: %s\ncategories: []\nsummary: ""\n' "$tags" ;;
     reading) printf 'author: ""\nstatus: "在读"\nrating: 0\nlink: ""\ntags: %s\n' "$tags" ;;
     music)   printf 'artist: ""\nlink: ""\ntags: %s\n' "$tags" ;;
     *)       printf 'tags: %s\n' "$tags" ;;
@@ -177,7 +177,7 @@ cmd_publish() {
     return 0
   fi
 
-  # 注意 -c core.quotePath=false：否则中文文件名会被转义成 "content/post/\346..." 这种形式
+  # 注意 -c core.quotePath=false：否则中文文件名会被转义成 "content/note/\346..." 这种形式
   local msg f
   f="$(git -C "$ROOT" -c core.quotePath=false diff --cached --name-only --diff-filter=ACM -- content | head -n1 || true)"
   if [ -n "$f" ]; then
@@ -245,7 +245,7 @@ cmd_tags() {
 #    draft   不发布：构建产物里根本没有这一页
 #
 #  注意 hidden/public 是相对"收录"而言；要让它出现在首页列表里，
-#  把文件挪到 content/posts/ 这类主 section 下。
+#  把文件挪到 content/post/ 这类主 section 下。
 # ------------------------------------------------------------
 VIS_USAGE='用法: blog vis <文件> [public|hidden|draft]'
 
@@ -352,18 +352,18 @@ PY
 }
 
 # ------------------------------------------------------------
-#  写 post（content/post/ 下的笔记）
+#  写笔记（content/note/）
 #
-#    blog post "标题" [分区]   分区默认 others，可选值见 content/post/ 下的目录
+#    blog note "标题" [分区]   分区默认 others，可选值见 content/note/ 下的目录
 #    默认写 draft: true —— 存下来了但线上完全不存在，想发再 blog vis
 # ------------------------------------------------------------
-cmd_post() {
+cmd_note() {
   local title="${1:-}" section="${2:-others}"
-  local notes_root="$CONTENT/post"
+  local notes_root="$CONTENT/note"
   local sections
   sections="$(ls "$notes_root" 2>/dev/null | grep -v '\.md$' | tr '\n' ' ' | sed 's/ $//')"
 
-  [ -n "$title" ] || die "用法: blog post \"标题\" [分区]（分区默认 others，可选: $sections）"
+  [ -n "$title" ] || die "用法: blog note \"标题\" [分区]（分区默认 others，可选: $sections）"
   local dir="$notes_root/$section"
   [ -d "$dir" ] || die "分区不存在: $section（可选: $sections）"
 
@@ -384,7 +384,7 @@ cmd_post() {
     printf 'draft: true\n'
     printf -- '---\n\n'
   } > "$file"
-  ok "新建 post: ${file#"$ROOT"/}"
+  ok "新建笔记: ${file#"$ROOT"/}"
   info "现在是 draft：本地能预览，线上不会出现（详见 blog vis）"
 
   if [ -t 0 ] && [ -t 1 ]; then
@@ -400,7 +400,7 @@ cmd_post() {
 
   info "接下来："
   info "  blog vis ${file#"$ROOT"/} hidden   # 只有直达链接能看，不进栏目"
-  info "  blog vis ${file#"$ROOT"/} public   # 出现在顶部导航的 post 栏目里"
+  info "  blog vis ${file#"$ROOT"/} public   # 出现在顶部导航的 note 栏目里"
   info "  然后 blog save 或 nvim 里 <leader>bp 推上去"
 }
 
@@ -426,9 +426,8 @@ cmd_tag() {
 
 case "${1:-}" in
   new)     shift; cmd_new "$@" ;;
-  article) shift; cmd_new posts "$@" ;;
-  post)    shift; cmd_post "$@" ;;
-  wiki)    shift; cmd_post "$@" ;;
+  article|post) shift; cmd_new post "$@" ;;
+  note|wiki)    shift; cmd_note "$@" ;;
   ub)      shift; cmd_ub "$@" ;;
   save)    shift; cmd_publish "$@" ;;
   publish) shift; cmd_publish "$@" ;;
