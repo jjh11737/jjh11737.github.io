@@ -186,6 +186,9 @@ cmd_publish() {
   if git -C "$ROOT" remote get-url origin >/dev/null 2>&1; then
     if git -C "$ROOT" push -q 2>/dev/null; then
       ok "已推送，等 CI 跑完就上线了"
+    elif ! git -C "$ROOT" rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+      info "这个分支还没有上游，先跑一次: git push -u origin $(git -C "$ROOT" branch --show-current)"
+      info "（如果远端仓库还没建好，push 失败是正常的，本地已经提交了）"
     else
       info "push 失败，rebase 后重试"
       git -C "$ROOT" pull --rebase --autostash
@@ -306,7 +309,8 @@ if lines and lines[0].strip() == '---':
         sys.exit('frontmatter 没有闭合的 ---')
     fm, rest = lines[1:end], lines[end:]
 else:
-    fm, rest = [], lines
+    # 没有 frontmatter 就补一个（rest 先放上闭合的那一行 ---）
+    fm, rest = [], ['---'] + lines
 
 kept, skipping = [], False
 for l in fm:
