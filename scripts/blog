@@ -5,6 +5,7 @@
 #  日常只会用到这三条：
 #    blog new posts "标题"    新建一篇，写完在 nvim 里按 <leader>bp
 #    blog note "一句话"       发一条短记，写完即提交推送
+#    blog wiki "标题" [分区]  新建一篇笔记（content/n7k4xq/，默认 draft 不发布）
 #    blog save <文件>         提交并推送指定文件（nvim 的 <leader>bp 调的就是它）
 #
 #  其他：
@@ -26,7 +27,8 @@ ok() { printf '\033[32m✓\033[0m %s\n' "$*" >&2; }
 info() { printf '\033[36m·\033[0m %s\n' "$*" >&2; }
 
 usage() {
-  sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'
+  # 打印文件头那段 “#” 注释（从第 3 行到第一条 ==== 分隔线之间）
+  sed -n '3,/^# ====/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -337,6 +339,59 @@ PY
   ok "可见性已设为 $mode"
 }
 
+# ------------------------------------------------------------
+#  写笔记（content/n7k4xq/ 下的 wiki 笔记）
+#
+#    blog wiki "标题" [分区]   分区默认 others，可选值见 content/n7k4xq/ 下的目录
+#    默认写 draft: true —— 存下来了但线上完全不存在，想发再 blog vis
+# ------------------------------------------------------------
+cmd_wiki() {
+  local title="${1:-}" section="${2:-others}"
+  local notes_root="$CONTENT/n7k4xq"
+  local sections
+  sections="$(ls "$notes_root" 2>/dev/null | grep -v '\.md$' | tr '\n' ' ' | sed 's/ $//')"
+
+  [ -n "$title" ] || die "用法: blog wiki \"标题\" [分区]（分区默认 others，可选: $sections）"
+  local dir="$notes_root/$section"
+  [ -d "$dir" ] || die "分区不存在: $section（可选: $sections）"
+
+  local slug
+  slug="$(slugify "$title")"
+  [ -n "$slug" ] || die "标题里没有能用作文件名的字符"
+
+  local file="$dir/$slug.md" n=2
+  while [ -e "$file" ]; do
+    file="$dir/$slug-$n.md"
+    n=$((n + 1))
+  done
+
+  {
+    printf -- '---\n'
+    printf 'title: "%s"\n' "${title//\"/\\\"}"
+    printf 'date: %s\n' "$(date +%Y-%m-%dT%H:%M:%S%:z)"
+    printf 'draft: true\n'
+    printf -- '---\n\n'
+  } > "$file"
+  ok "新建笔记: ${file#"$ROOT"/}"
+  info "现在是 draft：本地能预览，线上不会出现（详见 blog vis）"
+
+  if [ -t 0 ] && [ -t 1 ]; then
+    "${EDITOR:-nvim}" "$file"
+    if [ -f "$ROOT/scripts/tag.py" ]; then
+      info "写完了，顺手按规则表补标签…"
+      python3 "$ROOT/scripts/tag.py" --apply "${file#"$ROOT"/}" >/dev/null 2>&1 || true
+      local tags
+      tags="$(grep -m1 '^noteTags:' "$file" 2>/dev/null || true)"
+      [ -n "$tags" ] && info "  ${tags}"
+    fi
+  fi
+
+  info "接下来："
+  info "  blog vis ${file#"$ROOT"/} hidden   # 只有直达链接能看，不进栏目"
+  info "  blog vis ${file#"$ROOT"/} public   # 出现在顶部导航的「笔记」栏目里"
+  info "  然后 blog save 或 nvim 里 <leader>bp 推上去"
+}
+
 cmd_tag() {
   local mode="--dry" targets=()
   while [ $# -gt 0 ]; do
@@ -369,6 +424,7 @@ case "${1:-}" in
   build)   shift; cmd_build ;;
   tags)    shift; cmd_tags ;;
   tag)     shift; cmd_tag "$@" ;;
+  wiki)    shift; cmd_wiki "$@" ;;
   vis|visibility) shift; cmd_vis "$@" ;;
   ""|-h|--help|help) usage 0 ;;
   *) die "未知命令: $1（用 blog --help 看用法）" ;;
