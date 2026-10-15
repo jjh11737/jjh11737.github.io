@@ -27,7 +27,7 @@ ssh -4 -T git@github.com     # 强制IPv4
 ssh -6 -T git@github.com     # 强制IPv6
 ```
 
-校园网里常见的原因就三类：IPv6半通不通（`-6`卡、`-4`通）；只挡了22端口；代理只覆盖了http，`git config http.proxy`只对https协议的remote生效，ssh协议根本不走它，所以开不开代理没区别
+查了一下，常见的原因就三类：IPv6半通不通（`-6`卡、`-4`通）；只挡了22端口；代理只覆盖了http
 
 ## 解法
 
@@ -49,11 +49,7 @@ Host github.com
 ```
 先用`ssh -T -p 443 git@ssh.github.com`验证一下再往config里写
 
-3. 让ssh也走代理，`nc`得是openbsd那个版本，没有就换`ncat --proxy 127.0.0.1:7890 --proxy-type http %h %p`：
-```
-Host github.com
-    ProxyCommand nc -X connect -x 127.0.0.1:7890 %h %p
-```
+3. 让ssh也走代理
 
 4. 或者干脆改成https协议，这样`http.proxy`就管用了：
 ```bash
@@ -61,12 +57,4 @@ git remote set-url origin https://github.com/<user>/<repo>.git
 git config --global http.proxy http://127.0.0.1:7890
 ```
 
-另外配个超时，免得一卡就是好几分钟：
-```
-Host *
-    ConnectTimeout 10
-    ServerAliveInterval 10
-    ServerAliveCountMax 3
-```
 
-调试用`GIT_SSH_COMMAND="ssh -vvv" git push`；如果卡的是走https的push，那是另一回事，该用`GIT_CURL_VERBOSE=1`
