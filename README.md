@@ -93,7 +93,7 @@ PaperMod 用本地 Fuse.js，没有任何外部服务：
 
 这个路径就是目录名本身：想换路径，重命名 `content/n7k4xq/` 就行，别的什么都不用改（模板里没有硬编码这个前缀，判断条件用的都是 frontmatter 标志）。
 
-它被排除在这些出口之外，每一条都实测过：
+整区默认不收录，它被排除在这些出口之外，每一条都实测过：
 
 | 出口 | 靠什么关掉 |
 | --- | --- |
@@ -108,18 +108,54 @@ PaperMod 用本地 Fuse.js，没有任何外部服务：
 
 **说清楚：这不是访问控制。** 拿到 URL 的任何人、以及翻仓库的人，都能看到这些笔记。要真正的私有只有两条路——把这一区挪到 VPS 上用 HTTP basic auth 挡，或者挂 Cloudflare Access。
 
+## 单篇可见性
+
+隐藏区是"整区默认不收录"，每一篇还可以单独改。一条命令：
+
+```bash
+blog vis content/n7k4xq/maths/prob.md          # 看当前状态
+blog vis content/n7k4xq/maths/prob.md public   # 收录（进搜索/RSS/sitemap）
+blog vis content/n7k4xq/maths/prob.md hidden   # 不收录，但链接能访问（隐藏区默认）
+blog vis content/n7k4xq/maths/prob.md draft    # 不发布，构建产物里没有这一页
+```
+
+nvim 里按 `<leader>bv` 会弹出这三项让你选，`:BlogVis public` 也行。
+
+| 状态 | 构建产物 | 搜索索引 | RSS | sitemap | robots |
+| --- | --- | --- | --- | --- | --- |
+| `public` | ✓ | ✓ | ✓ | ✓ | `index, follow` |
+| `hidden` | ✓ | ✗ | ✗ | ✗ | `noindex, nofollow` |
+| `draft` | ✗ | — | — | — | — |
+
+实现上就是往 frontmatter 里写四个原生字段（`hiddenInRss` / `searchHidden` / `robotsNoIndex` / `sitemap.disable`）加一个 `draft`，在隐藏区里显式写 `false` 就能盖掉整区的 cascade。手改也行，就是别忘了四个字段要一起改，所以建议用命令。
+
+一个语义上的说明：`public` 指的是"会被收录"，页面 URL 仍在 `/n7k4xq/xxx/` 下。想让它出现在首页"最近"流和归档里，把它挪到 `content/posts/`（或 notes / reading / music）下面——那些才是主 section。
+
 ## 部署
 
 `.github/workflows/deploy.yml` 会在 `main` 分支推送后构建并发布到 GitHub Pages。
 
-上线前要改的只有一处：
+这个仓库要叫 `jjh11737.github.io`（GitHub 的用户站点仓库，只能有一个），站点就挂在域名根上。所以顺序是：
 
-```toml
-# hugo.toml
-baseURL = "https://你的域名/"
+```bash
+# 1. 先在 GitHub 上把旧的 VitePress 仓库改名（比如 jjh11737-wiki）或删掉，
+#    腾出 jjh11737.github.io 这个名字
+# 2. 新建一个同名的空仓库（不要初始化 README）
+# 3. 推上去
+cd /mnt/data1/homepage
+git push -u origin main
+# 4. 仓库 Settings → Pages → Source 选 GitHub Actions
 ```
 
-它影响 RSS 里的绝对链接、sitemap 和图片地址，所以别忘了。域名在仓库的 Settings → Pages 里填，并在 `static/` 下放一个 `CNAME` 文件（内容是你域名）会更省事。
+**在旧仓库改名之前不要 push**：`origin` 现在指向的名字还是旧仓库，推上去不会覆盖什么（旧仓库默认分支是 master），但会平白多出一个 main 分支，容易看糊涂。
+
+以后要换成自己的域名，改 `hugo.toml` 的 `baseURL` + 在 `static/CNAME` 里写域名，再在 Settings → Pages 里填一遍就行。
+
+## 文章与笔记的去向
+
+- 旧 VitePress 站的 14 篇文章（C99、tmux、makefile…）在 `content/posts/`
+- 旧知识库的 18 篇笔记在隐藏区 `content/n7k4xq/`
+- 旧的 VitePress 仓库只剩一张停用说明，可以归档了
 
 ## 主题
 

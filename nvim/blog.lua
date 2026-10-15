@@ -5,6 +5,7 @@
 --  提供：
 --    <leader>bp / :BlogPublish   保存并发布当前文件
 --    <leader>bn / :BlogNew       新建内容（会自动打开编辑器）
+--    <leader>bv / :BlogVis       切换当前文件的可见性（public/hidden/draft）
 --    <leader>bs                  起本地预览
 -- ============================================================
 
@@ -47,6 +48,39 @@ function M.serve()
   vim.cmd("botright 12split | terminal " .. (BLOG or "blog") .. " preview")
 end
 
+function M.vis(mode)
+  local file = vim.fn.expand("%:p")
+  if file == "" then
+    return notify("当前 buffer 没有文件", 1)
+  end
+  if not BLOG then
+    return notify("找不到 blog 命令", 1)
+  end
+  local args = { BLOG, "vis", file }
+  if mode and mode ~= "" then
+    table.insert(args, mode)
+  end
+  notify(vim.fn.system(args), vim.v.shell_error)
+end
+
+function M.pick_vis()
+  local modes = { "public", "hidden", "draft" }
+  vim.ui.select(modes, {
+    prompt = "可见性: ",
+    format_item = function(item)
+      return ({
+        public = "public  收录（搜索/RSS/sitemap）",
+        hidden = "hidden  不收录，链接可访问",
+        draft = "draft   不发布",
+      })[item]
+    end,
+  }, function(choice)
+    if choice then
+      M.vis(choice)
+    end
+  end)
+end
+
 vim.api.nvim_create_user_command("BlogPublish", M.publish, { desc = "保存并发布当前文件" })
 vim.api.nvim_create_user_command("BlogNew", function(opts)
   local type, title = opts.args:match("^(%S+)%s+(.+)$")
@@ -60,6 +94,12 @@ end, desc = "新建内容" })
 
 vim.keymap.set("n", "<leader>bp", M.publish, { desc = "blog: 发布当前文件" })
 vim.keymap.set("n", "<leader>bs", M.serve, { desc = "blog: 本地预览" })
+vim.keymap.set("n", "<leader>bv", M.pick_vis, { desc = "blog: 切换可见性" })
+vim.api.nvim_create_user_command("BlogVis", function(opts)
+  M.vis(opts.args)
+end, { nargs = "?", complete = function()
+  return { "public", "hidden", "draft" }
+end, desc = "设置当前文件可见性" })
 vim.keymap.set("n", "<leader>bn", function()
   local type = vim.fn.input("类型 (posts/notes/reading/music): ")
   if type == "" then

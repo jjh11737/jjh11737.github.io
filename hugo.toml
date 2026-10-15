@@ -3,9 +3,11 @@
 #  日常只需要动这几个地方：baseURL / profileMode / socialIcons / menu
 # ============================================================
 
-# TODO: 换成你自己的域名。RSS、og:image、sitemap 里的绝对链接都依赖它。
+# 主站地址：这个仓库就叫 jjh11737.github.io，属于 GitHub 的「用户站点」，
+# 直接挂在域名根上。RSS、og:image、sitemap 里的绝对链接都依赖它。
+# 以后接自己的域名，把这里改成 https://你的域名/，并在 static/CNAME 里写域名。
 # 本地预览不受影响（hugo server 会覆盖成 localhost）。
-baseURL = "https://example.com/"
+baseURL = "https://jjh11737.github.io/"
 
 title = "jjh"
 copyright = "© jjh"

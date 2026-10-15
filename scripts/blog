@@ -12,6 +12,7 @@
 #    blog build               本地构建检查
 #    blog publish             不带参数时提交 content/ 下的所有改动
 #    blog tags                看标签统计
+#    blog vis <文件> [public|hidden|draft]   控制单篇是否公开
 # ============================================================
 set -euo pipefail
 
@@ -24,7 +25,7 @@ ok() { printf '\033[32m✓\033[0m %s\n' "$*" >&2; }
 info() { printf '\033[36m·\033[0m %s\n' "$*" >&2; }
 
 usage() {
-  sed -n '3,14p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -220,6 +221,117 @@ cmd_tags() {
     | sort | uniq -c | sort -rn
 }
 
+# ------------------------------------------------------------
+#  单篇可见性
+#
+#    public  收录：进搜索索引、RSS、sitemap，页面允许索引
+#    hidden  不收录：知道链接能看，但不进索引/feed/sitemap，带 noindex
+#    draft   不发布：构建产物里根本没有这一页
+#
+#  注意 hidden/public 是相对"收录"而言；要让它出现在首页列表里，
+#  把文件挪到 content/posts/ 这类主 section 下。
+# ------------------------------------------------------------
+VIS_USAGE='用法: blog vis <文件> [public|hidden|draft]'
+
+cmd_vis() {
+  local file="${1:-}" mode="${2:-}"
+  [ -n "$file" ] || die "$VIS_USAGE"
+  [ -f "$file" ] || die "文件不存在: $file"
+
+  if [ -z "$mode" ]; then
+    python3 - "$file" <<'PY'
+import re, sys
+
+path = sys.argv[1]
+lines = open(path, encoding='utf-8').read().split('\n')
+if not lines or lines[0].strip() != '---':
+    print(f'{path}: 没有 frontmatter')
+    sys.exit(0)
+
+end = next((i for i, l in enumerate(lines[1:], 1) if l.strip() == '---'), None)
+fm = lines[1:end] if end is not None else []
+
+def get(key):
+    for i, l in enumerate(fm):
+        m = re.match(r'^%s:\s*(.*)$' % key, l)
+        if m:
+            v = m.group(1).strip()
+            if v:
+                return v
+            for j in range(i + 1, len(fm)):
+                if not fm[j].strip():
+                    continue
+                return fm[j].strip() if fm[j].startswith((' ', '\t')) else None
+    return None
+
+vals = {k: (get(k) or '未设置') for k in ('draft', 'hiddenInRss', 'searchHidden', 'robotsNoIndex', 'sitemap')}
+hidden_all = all(vals[k] in ('true', 'disable: true') for k in ('hiddenInRss', 'searchHidden', 'robotsNoIndex'))
+if vals['draft'] == 'true':
+    state = 'draft（不会出现在构建产物里）'
+elif vals['hiddenInRss'] == '未设置' and vals['searchHidden'] == '未设置':
+    state = '跟随所在目录的默认（隐藏区的默认是"不收录"）'
+elif hidden_all:
+    state = 'hidden（不收录，链接可访问）'
+else:
+    state = 'public（会被收录）'
+
+print(f'{path}')
+print(f'  状态: {state}')
+for k, v in vals.items():
+    print(f'  {k}: {v}')
+PY
+    return
+  fi
+
+  case "$mode" in public | hidden | draft) ;; *) die "$VIS_USAGE" ;; esac
+
+  python3 - "$file" "$mode" <<'PY'
+import re, sys
+
+path, mode = sys.argv[1], sys.argv[2]
+VALUES = {
+    'public': [('draft', 'false'), ('hiddenInRss', 'false'), ('searchHidden', 'false'),
+               ('robotsNoIndex', 'false'), ('sitemap', 'false')],
+    'hidden': [('draft', 'false'), ('hiddenInRss', 'true'), ('searchHidden', 'true'),
+               ('robotsNoIndex', 'true'), ('sitemap', 'true')],
+    'draft':  [('draft', 'true'), ('hiddenInRss', 'true'), ('searchHidden', 'true'),
+               ('robotsNoIndex', 'true'), ('sitemap', 'true')],
+}
+managed = '|'.join(sorted({'draft', 'hiddenInRss', 'searchHidden', 'robotsNoIndex', 'sitemap'}))
+
+lines = open(path, encoding='utf-8').read().split('\n')
+if lines and lines[0].strip() == '---':
+    end = next((i for i, l in enumerate(lines[1:], 1) if l.strip() == '---'), None)
+    if end is None:
+        sys.exit('frontmatter 没有闭合的 ---')
+    fm, rest = lines[1:end], lines[end:]
+else:
+    fm, rest = [], lines
+
+kept, skipping = [], False
+for l in fm:
+    if re.match(r'^(%s):' % managed, l):
+        skipping = True
+        continue
+    if skipping and l.startswith((' ', '\t')):
+        continue
+    skipping = False
+    kept.append(l)
+while kept and not kept[-1].strip():
+    kept.pop()
+
+for key, value in VALUES[mode]:
+    if key == 'sitemap':
+        kept += ['sitemap:', '  disable: %s' % value]
+    else:
+        kept.append('%s: %s' % (key, value))
+
+open(path, 'w', encoding='utf-8').write('\n'.join(['---'] + kept + rest))
+print('%s → %s' % (path, mode))
+PY
+  ok "可见性已设为 $mode"
+}
+
 case "${1:-}" in
   new)     shift; cmd_new "$@" ;;
   post)    shift; cmd_new posts "$@" ;;
@@ -231,6 +343,7 @@ case "${1:-}" in
   preview|serve) shift; cmd_preview ;;
   build)   shift; cmd_build ;;
   tags)    shift; cmd_tags ;;
+  vis|visibility) shift; cmd_vis "$@" ;;
   ""|-h|--help|help) usage 0 ;;
   *) die "未知命令: $1（用 blog --help 看用法）" ;;
 esac
