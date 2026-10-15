@@ -1,6 +1,6 @@
 {{- /* UB 条目单页底部的信息卡：按字段判断，挂在主题的 extend_post_content 钩子上，不覆盖主题模板 */ -}}
 {{- $p := . }}
-{{- if or $p.Params.author $p.Params.artist $p.Params.status }}
+{{- if or $p.Params.author $p.Params.artist $p.Params.status $p.Params.link }}
   {{- $rated := gt (int ($p.Params.rating | default 0)) 0 }}
   {{- if or $p.Params.author $p.Params.artist $p.Params.status $rated $p.Params.link }}
   <div class="entry-card">

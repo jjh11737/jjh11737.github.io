@@ -122,6 +122,9 @@ enableEmoji = true
 # 图标名可用：github rss spotify lastfm neteasecloudmusic douban goodreads
 # bilibili telegram mastodon steam zhihu 等（完整列表见主题 layouts/_partials/svg.html）
 [[params.socialIcons]]
+  name = "neteasecloudmusic"
+  url = "https://music.163.com/#/user/home?id=9240724042"
+[[params.socialIcons]]
   name = "github"
   url = "https://github.com/jjh11737"
 [[params.socialIcons]]
