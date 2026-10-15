@@ -520,7 +520,7 @@ run: insert-arg
 - 修改rtl代码，把pc_init改为0x80000000
 - 修改TRM的halt，变成ebreak
 
-好吧我这里写错了，这里实际上并没有ALL，而是后来被转换为了NAME，对应Makefile.<NAME>，因为Makefile这么写的：
+好吧我这里写错了，这里实际上并没有ALL，而是后来被转换为了NAME，对应`Makefile.<NAME>`，因为Makefile这么写的：
 ```makefile
 Makefile.%: tests/%.c latest
 	@/bin/echo -e "NAME = $*\nSRCS = $<\ninclude $${AM_HOME}/Makefile" > $@
