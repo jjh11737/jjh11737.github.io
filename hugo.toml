@@ -1,20 +1,14 @@
 # ============================================================
 #  个人主页 / 博客 —— Hugo + PaperMod
 #  日常只需要动这几个地方：baseURL / profileMode / socialIcons / menu
-# ============================================================
-
-# 主站地址：这个仓库就叫 jjh11737.github.io，属于 GitHub 的「用户站点」，
-# 直接挂在域名根上。RSS、og:image、sitemap 里的绝对链接都依赖它。
-# 以后接自己的域名，把这里改成 https://你的域名/，并在 static/CNAME 里写域名。
-# 本地预览不受影响（hugo server 会覆盖成 localhost）。
 baseURL = "https://jjh11737.github.io/"
 
-title = "jjh"
-copyright = "© jjh"
+title = "jjh's blog"
+copyright = "© nocopyrightlol"
 locale = "zh-cn"
-defaultContentLanguage = "zh" # zh.yaml 在主题里，界面文字会是中文
-hasCJKLanguage = true         # 中文的字数统计 / 摘要截断靠这个才正确
-timeZone = "Asia/Shanghai"    # 决定 RSS pubDate 的时区，别删
+defaultContentLanguage = "zh"
+hasCJKLanguage = true
+timeZone = "Asia/Shanghai"
 theme = "PaperMod"
 enableRobotsTXT = true
 enableEmoji = true
@@ -22,16 +16,13 @@ enableEmoji = true
 [pagination]
   pagerSize = 20
 
-# RSS 条目上限；ShowFullTextinRSS 在 [params] 里
 [services.rss]
   limit = 50
 
-# home 的 JSON 就是搜索索引 /index.json —— 删掉搜索就失效
 [outputs]
   home = ["HTML", "RSS", "JSON"]
   section = ["HTML", "RSS"]
 
-# 笔记区自己的搜索索引：/n7k4xq/index.json（只包含笔记，不含博文）
 [outputFormats.NotesJSON]
   mediaType = "application/json"
   baseName = "index"
@@ -48,12 +39,10 @@ enableEmoji = true
 
 [markup]
   [markup.goldmark.renderer]
-    unsafe = true # 允许正文里写原始 HTML，嵌音乐/视频 iframe 需要
+    unsafe = true     # allow the usage of html
   [markup.highlight]
     noClasses = false
     lineNos = false
-  # 把 $...$ / $$...$$ 原样透传，交给页面里的 KaTeX 渲染
-  # （不开这个，Goldmark 会先把公式里的 _ * \ 之类吃掉）
   [markup.goldmark.extensions.passthrough]
     enable = true
     [markup.goldmark.extensions.passthrough.delimiters]
@@ -65,7 +54,7 @@ enableEmoji = true
 # ------------------------------------------------------------
 [params]
   author = "jjh"
-  description = "折腾、阅读与音乐"
+  description = "no_description"
   DateFormat = "2006-01-02"
   defaultTheme = "auto"
 
@@ -80,17 +69,14 @@ enableEmoji = true
   ShowRssButtonInSectionTermList = true
   ShowFullTextinRSS = true # RSS 输出全文（<content:encoded>）
 
-  # 首页“最近”流和归档页会抓这几个 section
   mainSections = ["posts", "notes", "reading", "music"]
 
-  # 首页“最近”显示条数（自定义模板 layouts/_partials/home_recent.html 读取）
   homeRecentCount = 8
 
-  # 正文里出现的图片自动带 lightbox 效果不需要额外开关；这里只放语言
   [params.comments]
     enable = false
 
-  # 搜索：本地 Fuse.js，不依赖任何外部服务
+  # 搜索：本地 Fuse.js
   [params.fuseOpts]
     iscasesensitive = false
     threshold = 0.4
@@ -101,7 +87,7 @@ enableEmoji = true
   [params.profileMode]
     enabled = true
     title = "jjh"
-    subtitle = "折腾 · 阅读 · 音乐"
+    subtitle = ""
     imageUrl = ""
     imageWidth = 120
     imageHeight = 120
