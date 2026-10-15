@@ -1,0 +1,72 @@
+# 自动标签规则表。格式：类型|匹配|标签   （用竖线分隔）
+#   path|<相对仓库根目录的路径前缀>|<标签>   整个目录下的内容都带这个标签
+#   kw|<关键词>|<标签>                       关键词命中就带；标题里出现算 1 次即可，
+#                                            只在正文出现要求至少命中 3 次（阈值在 scripts/blog 里）
+# 只允许出现这张表里的标签，避免标签越滚越多。
+
+# ---- 目录规则（你的目录划分本身就是最可靠的信号）----
+path|content/n7k4xq/CS/|计算机
+path|content/n7k4xq/electronics/|电子
+path|content/n7k4xq/maths/|数学
+path|content/n7k4xq/Tools/|工具
+path|content/n7k4xq/ysyx/|ysyx
+
+# ---- 关键词规则 ----
+kw|CSAPP|计算机系统
+kw|机器级|计算机系统
+kw|汇编|汇编
+kw|x86|汇编
+kw|缓存|cache
+kw|cache|cache
+kw|虚拟内存|虚拟内存
+kw|内存映射|虚拟内存
+kw|链接器|链接
+kw|链接脚本|链接
+kw|进程|进程
+kw|fork|进程
+kw|inode|文件系统
+kw|文件系统|文件系统
+kw|挂载|文件系统
+kw|Linux|Linux
+kw|debian|Linux
+kw|ubuntu|Linux
+kw|VPS|VPS
+kw|nginx|VPS
+kw|C99|C语言
+kw|预处理器|C语言
+kw|gdb|调试
+kw|断点|调试
+kw|数字电路|数字电路
+kw|时序逻辑|数字电路
+kw|HDL|HDL
+kw|Verilog|HDL
+kw|Verilator|HDL
+kw|Verilator|仿真
+kw|Chisel|Chisel
+kw|模拟电路|模拟电路
+kw|模电|模拟电路
+kw|电磁|电磁场
+kw|麦克斯韦|电磁场
+kw|傅里叶|信号与系统
+kw|拉普拉斯|信号与系统
+kw|卷积|信号与系统
+kw|Z变换|信号与系统
+kw|DSP|数字信号处理
+kw|概率|概率论
+kw|随机变量|概率论
+kw|统计学习|统计学习
+kw|机器学习|统计学习
+kw|精神分析|心理学
+kw|sed|文本处理
+kw|正则|文本处理
+kw|vim|编辑器
+kw|nvim|编辑器
+kw|tmux|tmux
+kw|Makefile|Makefile
+kw|RISC-V|RISC-V
+kw|ysyx|ysyx
+kw|NEMU|ysyx
+kw|NPC|ysyx
+kw|git|Git
+kw|ssh|Git
+kw|重定位|链接

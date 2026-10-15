@@ -7,6 +7,7 @@ searchHidden: false
 robotsNoIndex: false
 sitemap:
   disable: false
+noteTags: ["计算机", "链接", "计算机系统", "进程", "Linux", "cache"]
 ---
 
 ## 一、计算机系统漫游

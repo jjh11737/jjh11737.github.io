@@ -232,3 +232,96 @@
 .rss-link:hover {
   color: var(--primary);
 }
+
+/* ---------------- 笔记区首页 ---------------- */
+.notes-toolbar {
+  display: flex;
+  align-items: baseline;
+  gap: 1rem;
+  margin: calc(var(--gap) * 0.8) 0 0.6rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.notes-count {
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: var(--secondary);
+}
+
+.note-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: calc(var(--gap) * 0.8);
+}
+
+.tag-chip {
+  font: inherit;
+  font-size: 0.8rem;
+  padding: 0.1rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--secondary);
+  cursor: pointer;
+}
+
+.tag-chip sup {
+  font-size: 0.65rem;
+  margin-left: 0.15rem;
+  opacity: 0.7;
+}
+
+.tag-chip:hover {
+  color: var(--primary);
+}
+
+.tag-chip.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--theme);
+}
+
+.note-group-head {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--secondary);
+  margin: calc(var(--gap) * 1.2) 0 0.4rem;
+}
+
+.note-group-count {
+  font-size: 0.7rem;
+  margin-left: 0.4rem;
+  opacity: 0.7;
+}
+
+.note-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.note-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.6rem;
+  padding: 0.42rem 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.note-item-title {
+  color: var(--primary);
+}
+
+.note-item-date,
+.note-item-tags {
+  font-size: 0.8rem;
+  color: var(--secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.note-item-date {
+  margin-left: auto;
+}

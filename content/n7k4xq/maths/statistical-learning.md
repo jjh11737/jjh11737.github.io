@@ -2,6 +2,7 @@
 title: "Statistical Learning"
 date: 2026-08-17T00:00:00+08:00
 draft: false
+noteTags: ["数学"]
 ---
 
 ### resampling

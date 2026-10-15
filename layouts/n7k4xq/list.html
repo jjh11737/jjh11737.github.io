@@ -1,0 +1,87 @@
+{{- /* 笔记区首页：分节列出全部笔记 + 标签云（点击就地过滤）+ 自己的搜索入口 */ -}}
+{{- define "main" }}
+{{- $all := .RegularPagesRecursive }}
+
+<header class="page-header">
+  <h1>{{ .Title }}</h1>
+  {{- with .Description }}
+  <div class="post-description">{{ . | markdownify }}</div>
+  {{- end }}
+</header>
+
+{{- with .Content }}
+<div class="post-content md-content">{{ . }}</div>
+{{- end }}
+
+<div class="notes-toolbar">
+  <a class="notes-search-link" href="{{ "n7k4xq/search/" | relURL }}">搜索这些笔记 →</a>
+  <span class="notes-count">共 {{ len $all }} 篇</span>
+</div>
+
+{{- /* 标签云：从每篇的 noteTags 统计 */ -}}
+{{- $counts := dict }}
+{{- range $all }}
+  {{- range .Params.noteTags }}
+    {{- $counts = merge $counts (dict . (add (index $counts . | default 0) 1)) }}
+  {{- end }}
+{{- end }}
+{{- with $counts }}
+<div class="note-tags">
+  {{- range $tag, $n := . }}
+  <button type="button" class="tag-chip" data-tag="{{ $tag }}">#{{ $tag }}<sup>{{ $n }}</sup></button>
+  {{- end }}
+</div>
+{{- end }}
+
+{{- range .Sections }}
+<section class="note-group" data-note-group>
+  <h2 class="note-group-head">
+    {{ .Title }}<sup class="note-group-count">{{ len .RegularPagesRecursive }}</sup>
+  </h2>
+  <ul class="note-list">
+    {{- range .RegularPagesRecursive.ByDate.Reverse }}
+    <li class="note-item" data-note="{{ with .Params.noteTags }}{{ delimit . " " }}{{ end }}">
+      <a class="note-item-title" href="{{ .RelPermalink }}">{{ .Title }}</a>
+      <time class="note-item-date">{{ .Date.Format "2006-01-02" }}</time>
+      {{- with .Params.noteTags }}
+      <span class="note-item-tags">{{ range . }}#{{ . }} {{ end }}</span>
+      {{- end }}
+    </li>
+    {{- end }}
+  </ul>
+</section>
+{{- end }}
+
+<script>
+  (function () {
+    var active = null;
+    var chips = document.querySelectorAll('.tag-chip');
+    var groups = document.querySelectorAll('[data-note-group]');
+
+    function apply() {
+      for (var g = 0; g < groups.length; g++) {
+        var items = groups[g].querySelectorAll('[data-note]');
+        var shown = 0;
+        for (var i = 0; i < items.length; i++) {
+          var tags = (items[i].getAttribute('data-note') || '').trim().split(/\s+/);
+          var ok = !active || tags.indexOf(active) >= 0;
+          items[i].hidden = !ok;
+          if (ok) shown++;
+        }
+        groups[g].hidden = shown === 0;
+      }
+      for (var c = 0; c < chips.length; c++) {
+        chips[c].classList.toggle('active', chips[c].getAttribute('data-tag') === active);
+      }
+    }
+
+    document.addEventListener('click', function (e) {
+      var chip = e.target.closest ? e.target.closest('.tag-chip') : null;
+      if (!chip) return;
+      var tag = chip.getAttribute('data-tag');
+      active = active === tag ? null : tag;
+      apply();
+    });
+  })();
+</script>
+{{- end }}

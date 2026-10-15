@@ -2,6 +2,7 @@
 title: "sed"
 date: 2026-09-27T00:00:00+08:00
 draft: false
+noteTags: ["工具", "文本处理"]
 ---
 
 > 参考了[这个](https://www.grymoire.com/Unix/Sed.html)

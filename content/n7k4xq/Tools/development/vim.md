@@ -2,6 +2,7 @@
 title: "Vim"
 date: 2026-09-27T00:00:00+08:00
 draft: false
+noteTags: ["工具", "编辑器"]
 ---
 
 > 实际上你完全可以看`:h user-manual`里面的介绍...我这里只是抄了手册

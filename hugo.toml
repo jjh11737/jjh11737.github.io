@@ -31,6 +31,13 @@ enableEmoji = true
   home = ["HTML", "RSS", "JSON"]
   section = ["HTML", "RSS"]
 
+# 笔记区自己的搜索索引：/n7k4xq/index.json（只包含笔记，不含博文）
+[outputFormats.NotesJSON]
+  mediaType = "application/json"
+  baseName = "index"
+  isPlainText = true
+  notAlternative = true
+
 [taxonomies]
   tag = "tags"
   category = "categories"

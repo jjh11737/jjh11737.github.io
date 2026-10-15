@@ -13,6 +13,7 @@
 #    blog publish             不带参数时提交 content/ 下的所有改动
 #    blog tags                看标签统计
 #    blog vis <文件> [public|hidden|draft]   控制单篇是否公开
+#    blog tag [--apply]       按规则表自动生成标签（默认只预览）
 # ============================================================
 set -euo pipefail
 
@@ -25,7 +26,7 @@ ok() { printf '\033[32m✓\033[0m %s\n' "$*" >&2; }
 info() { printf '\033[36m·\033[0m %s\n' "$*" >&2; }
 
 usage() {
-  sed -n '3,15p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '3,16p' "$0" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -336,6 +337,26 @@ PY
   ok "可见性已设为 $mode"
 }
 
+cmd_tag() {
+  local mode="--dry" targets=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --apply) mode="--apply"; shift ;;
+      --dry | --dry-run) mode="--dry"; shift ;;
+      --clear) mode="--clear"; shift ;;
+      -h | --help)
+        printf '用法: blog tag [--apply|--clear] [文件...]\n'
+        return 0
+        ;;
+      *)
+        targets+=("$1")
+        shift
+        ;;
+    esac
+  done
+  exec python3 "$ROOT/scripts/tag.py" "$mode" "${targets[@]+"${targets[@]}"}"
+}
+
 case "${1:-}" in
   new)     shift; cmd_new "$@" ;;
   post)    shift; cmd_new posts "$@" ;;
@@ -347,6 +368,7 @@ case "${1:-}" in
   preview|serve) shift; cmd_preview ;;
   build)   shift; cmd_build ;;
   tags)    shift; cmd_tags ;;
+  tag)     shift; cmd_tag "$@" ;;
   vis|visibility) shift; cmd_vis "$@" ;;
   ""|-h|--help|help) usage 0 ;;
   *) die "未知命令: $1（用 blog --help 看用法）" ;;

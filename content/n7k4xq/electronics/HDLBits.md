@@ -2,6 +2,7 @@
 title: "一些HDLBits上的题目"
 date: 2026-08-17T00:00:00+08:00
 draft: false
+noteTags: ["电子", "HDL"]
 ---
 
 

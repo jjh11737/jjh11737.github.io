@@ -1,6 +1,6 @@
 ---
 title: "笔记"
-outputs: ["HTML"] # 关掉这个分支的 RSS
+outputs: ["HTML", "NotesJSON"] # 关掉这个分支的 RSS，另出一个自己的搜索索引
 cascade:
   hiddenInRss: true     # 不进首页/全站 feed
   searchHidden: true    # 不进搜索索引

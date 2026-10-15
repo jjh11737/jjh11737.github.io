@@ -1,0 +1,10 @@
+{{- /* 笔记区自己的搜索索引，输出到 /n7k4xq/index.json
+       主题的 fastsearch.js 请求的是相对路径 ../index.json，
+       所以 /n7k4xq/search/ 这个页面拿到的正好是这份索引（只有笔记，不含博文）。 */ -}}
+{{- $i := slice -}}
+{{- range where site.RegularPages "Section" .Section -}}
+  {{- if and (ne .Layout `search`) (ne .Layout `archives`) -}}
+    {{- $i = $i | append (dict "title" .Title "content" .Plain "permalink" .Permalink "summary" .Summary) -}}
+  {{- end -}}
+{{- end -}}
+{{- $i | jsonify -}}

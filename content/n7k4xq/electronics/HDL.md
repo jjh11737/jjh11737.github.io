@@ -2,6 +2,7 @@
 title: "HDL基础"
 date: 2026-08-17T00:00:00+08:00
 draft: false
+noteTags: ["电子", "HDL", "数字电路"]
 ---
 
 ## 基本语法

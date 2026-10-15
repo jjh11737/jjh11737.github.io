@@ -2,12 +2,7 @@
 title: "linux文件系统inode损坏了"
 date: 2026-08-27T00:00:00+08:00
 draft: false
-tags: []
----
-
----
-title: linux文件系统inode损坏了
-date: '2026-08-27'
+tags: ["文件系统", "Linux"]
 ---
 
 起因是我正在做ysyx,结果不知道为什么一个目录里面有一个文件`/`，尝试删除：

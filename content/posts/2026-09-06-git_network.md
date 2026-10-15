@@ -2,12 +2,7 @@
 title: "关于校园网无法正常通过ssh协议push到github"
 date: 2026-09-06T00:00:00+08:00
 draft: false
-tags: []
----
-
----
-title: 关于校园网无法正常通过ssh协议push到github
-date: '2026-09-06'
+tags: ["Git"]
 ---
 
 # 关于校园网无法正常通过ssh协议push到github
