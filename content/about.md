@@ -7,7 +7,6 @@ hiddenInRss: true
 
 你好，我是 jjh。
 
-笔记在 [笔记](/note/)
 
 ## 联系
 
