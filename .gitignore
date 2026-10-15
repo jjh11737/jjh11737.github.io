@@ -4,3 +4,6 @@ resources/_gen/
 .DS_Store
 *.swp
 *.tmp
+
+# 本机文档（项目实现 + 日常使用），不进仓库
+_local/
