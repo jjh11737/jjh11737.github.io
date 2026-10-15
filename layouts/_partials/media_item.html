@@ -1,0 +1,26 @@
+{{- $p := . }}
+<article class="media-item">
+  <div class="media-head">
+    <a class="media-title" href="{{ $p.RelPermalink }}">{{ $p.Title }}</a>
+    {{- if eq $p.Type "reading" }}
+      {{- with $p.Params.author }}<span class="media-by">{{ . }}</span>{{ end }}
+      {{- if gt (int ($p.Params.rating | default 0)) 0 }}
+      <span class="chip chip-rating">{{ $p.Params.rating }}/5</span>
+      {{- end }}
+    {{- else }}
+      {{- with $p.Params.artist }}<span class="media-by">{{ . }}</span>{{ end }}
+    {{- end }}
+    <time class="media-date" datetime="{{ $p.Date.Format "2006-01-02" }}">{{ $p.Date.Format "2006-01-02" }}</time>
+  </div>
+  {{- with $p.Summary }}
+  <p class="media-excerpt">{{ . | plainify | truncate 90 }}</p>
+  {{- end }}
+  <div class="media-foot">
+    {{- with $p.Params.link }}
+    <a class="chip chip-link" href="{{ . }}" target="_blank" rel="noopener noreferrer">外链 ↗</a>
+    {{- end }}
+    {{- range $p.GetTerms "tags" }}
+    <a class="chip chip-tag" href="{{ .RelPermalink }}">#{{ .LinkTitle }}</a>
+    {{- end }}
+  </div>
+</article>

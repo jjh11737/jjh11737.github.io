@@ -1,0 +1,31 @@
+{{- /* reading / music 单页底部的信息卡：挂在主题的 extend_post_content 钩子上，不覆盖主题模板 */ -}}
+{{- $p := . }}
+{{- if or (eq $p.Type "reading") (eq $p.Type "music") }}
+  {{- $rated := gt (int ($p.Params.rating | default 0)) 0 }}
+  {{- if or $p.Params.author $p.Params.artist $p.Params.status $rated $p.Params.link }}
+  <div class="entry-card">
+    <dl>
+      {{- with $p.Params.author }}
+      <dt>作者</dt>
+      <dd>{{ . }}</dd>
+      {{- end }}
+      {{- with $p.Params.artist }}
+      <dt>艺人</dt>
+      <dd>{{ . }}</dd>
+      {{- end }}
+      {{- with $p.Params.status }}
+      <dt>状态</dt>
+      <dd>{{ . }}</dd>
+      {{- end }}
+      {{- if $rated }}
+      <dt>评分</dt>
+      <dd>{{ $p.Params.rating }}/5</dd>
+      {{- end }}
+      {{- with $p.Params.link }}
+      <dt>链接</dt>
+      <dd><a href="{{ . }}" target="_blank" rel="noopener noreferrer">{{ . }}</a></dd>
+      {{- end }}
+    </dl>
+  </div>
+  {{- end }}
+{{- end }}

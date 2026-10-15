@@ -1,0 +1,33 @@
+{{- /* 首页“最近”：把 posts / notes / reading / music 混成一条动态流 */ -}}
+{{- $labels := dict "posts" "文章" "notes" "短记" "reading" "阅读" "music" "音乐" }}
+{{- $count := site.Params.homeRecentCount | default 8 }}
+{{- $pages := where site.RegularPages "Type" "in" site.Params.mainSections }}
+{{- $pages = where $pages "Params.hiddenInHomeList" "!=" true }}
+{{- $pages = $pages.ByDate.Reverse }}
+{{- $pages = first $count $pages }}
+
+{{- with $pages }}
+<section class="home-recent">
+  <h2 class="home-recent-heading">最近</h2>
+  <ul class="home-recent-list">
+    {{- range . }}
+    {{- $label := index $labels .Type | default .Type }}
+    {{- $text := .Title | plainify }}
+    {{- if eq .Type "notes" }}
+      {{- /* 不要 htmlUnescape：正文里出现 <xxx> 会被浏览器当成标签吃掉 */ -}}
+      {{- $text = .Plain | plainify | default (.Title | plainify) }}
+    {{- end }}
+    <li class="home-recent-item">
+      <a class="home-recent-link" href="{{ .RelPermalink }}">
+        <span class="home-recent-type type-{{ .Type }}">{{ $label }}</span>
+        <span class="home-recent-title">{{ $text | truncate 64 }}</span>
+        <time class="home-recent-date" datetime="{{ .Date.Format "2006-01-02" }}">{{ .Date.Format "01-02" }}</time>
+      </a>
+    </li>
+    {{- end }}
+  </ul>
+  <div class="home-recent-more">
+    <a href="{{ "archives/" | relURL }}">全部 →</a>
+  </div>
+</section>
+{{- end }}

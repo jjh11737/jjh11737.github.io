@@ -1,0 +1,236 @@
+#!/usr/bin/env bash
+# ============================================================
+#  blog —— 个人主页的发布工具
+#
+#  日常只会用到这三条：
+#    blog new posts "标题"    新建一篇，写完在 nvim 里按 <leader>bp
+#    blog note "一句话"       发一条短记，写完即提交推送
+#    blog save <文件>         提交并推送指定文件（nvim 的 <leader>bp 调的就是它）
+#
+#  其他：
+#    blog preview             本地预览（含草稿和未来日期）
+#    blog build               本地构建检查
+#    blog publish             不带参数时提交 content/ 下的所有改动
+#    blog tags                看标签统计
+# ============================================================
+set -euo pipefail
+
+ROOT="$(cd -- "$(dirname -- "$(readlink -f -- "$0")")/.." && pwd)"
+CONTENT="$ROOT/content"
+TYPES=(posts notes reading music)
+
+die() { printf '\033[31m×\033[0m %s\n' "$*" >&2; exit 1; }
+ok() { printf '\033[32m✓\033[0m %s\n' "$*" >&2; }
+info() { printf '\033[36m·\033[0m %s\n' "$*" >&2; }
+
+usage() {
+  sed -n '3,14p' "$0" | sed 's/^# \{0,1\}//'
+  exit "${1:-0}"
+}
+
+check_type() {
+  local t="$1" x
+  for x in "${TYPES[@]}"; do [ "$x" = "$t" ] && return 0; done
+  die "类型只能是: ${TYPES[*]}（收到: $t）"
+}
+
+slugify() {
+  printf '%s' "$1" \
+    | sed -E 's/[[:space:]]+/-/g' \
+    | tr -d '/\:*?"<>|' \
+    | sed -E 's/-+/-/g; s/^-+//; s/-+$//'
+}
+
+# 逗号分隔的标签 -> YAML 数组
+to_yaml_tags() {
+  local raw="$1" out=""
+  [ -n "$raw" ] || { printf '[]'; return; }
+  local IFS=','
+  local t
+  for t in $raw; do
+    t="$(printf '%s' "$t" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
+    [ -n "$t" ] || continue
+    [ -n "$out" ] && out="$out, "
+    out="$out\"${t//\"/\\\"}\""
+  done
+  printf '[%s]' "$out"
+}
+
+frontmatter() { # $1=type $2=title $3=datetime $4=tags
+  local t="$1" title="$2" ts="$3" tags="$4"
+  printf -- '---\n'
+  printf 'title: "%s"\n' "${title//\"/\\\"}"
+  printf 'date: %s\n' "$ts"
+  printf 'draft: false\n'
+  case "$t" in
+    posts)   printf 'tags: %s\ncategories: []\nsummary: ""\n' "$tags" ;;
+    notes)   printf 'tags: %s\n' "$tags" ;;
+    reading) printf 'author: ""\nstatus: "在读"\nrating: 0\nlink: ""\ntags: %s\n' "$tags" ;;
+    music)   printf 'artist: ""\nlink: ""\ntags: %s\n' "$tags" ;;
+  esac
+  printf -- '---\n\n'
+}
+
+new_file() { # $1=type $2=title $3=tags -> 输出文件路径
+  local type="$1" title="$2" tags="$3"
+  local file="$CONTENT/$type/$(date +%Y-%m-%d)-$(slugify "$title").md"
+  if [ -e "$file" ]; then
+    info "已存在: $file"
+  else
+    mkdir -p "$CONTENT/$type"
+    frontmatter "$type" "$title" "$(date +%Y-%m-%dT%H:%M:%S%:z)" "$tags" > "$file"
+    ok "新建: ${file#"$ROOT"/}"
+  fi
+  printf '%s' "$file"
+}
+
+# ------------------------------------------------------------
+#  新建
+# ------------------------------------------------------------
+cmd_new() {
+  local type="${1:-}" title="${2:-}" tagarg="${3:-}"
+  [ -n "$type" ] || usage 1
+  check_type "$type"
+  [ -n "$title" ] || die "缺少标题: blog new $type \"标题\""
+
+  local file
+  file="$(new_file "$type" "$title" "$(to_yaml_tags "$tagarg")")"
+  if [ -t 0 ] && [ -t 1 ]; then
+    "${EDITOR:-nvim}" "$file"
+  else
+    info "非交互环境，跳过后面的编辑器调用"
+  fi
+}
+
+cmd_note() {
+  [ $# -gt 0 ] || usage 1
+  local text="$*" first rest title short
+  first="$(printf '%s\n' "$text" | head -n1)"
+  rest="$(printf '%s\n' "$text" | tail -n +2)"
+
+  # 第一行当标题（太长就截断），剩下的当正文
+  title="$first"
+  [ "${#title}" -gt 40 ] && title="${title:0:40}"
+  short="${title:0:24}"
+
+  local file="$CONTENT/notes/$(date +%Y-%m-%d-%H%M)-$(slugify "$short").md"
+  if [ -e "$file" ]; then
+    file="$CONTENT/notes/$(date +%Y-%m-%d-%H%M%S)-$(slugify "$short").md"
+  fi
+  mkdir -p "$CONTENT/notes"
+  {
+    frontmatter notes "$title" "$(date +%Y-%m-%dT%H:%M:%S%:z)" "[]"
+    if [ -n "$rest" ]; then printf '%s\n' "$rest"; fi
+  } > "$file"
+  ok "新建短记: ${file#"$ROOT"/}"
+
+  cmd_publish "${file#"$ROOT"/}"
+}
+
+# ------------------------------------------------------------
+#  提交 / 推送
+# ------------------------------------------------------------
+title_of() {
+  grep -m1 '^title:' "$1" 2>/dev/null \
+    | sed -E 's/^title:[[:space:]]*//; s/^"//; s/"$//' || true
+}
+
+warn_about() { # $1=相对 ROOT 的路径
+  local f="$1" abs="$ROOT/$1" d
+  [ -f "$abs" ] || return 0
+  if grep -qE '^draft:[[:space:]]*true' "$abs" 2>/dev/null; then
+    info "提醒: $f 是 draft，线上不会渲染"
+  fi
+  d="$(grep -m1 '^date:' "$abs" 2>/dev/null | sed -E 's/^date:[[:space:]]*//; s/^"//; s/"$//' || true)"
+  if [ -n "$d" ]; then
+    local ts
+    ts="$(date -d "$d" +%s 2>/dev/null || echo 0)"
+    if [ "$ts" -gt "$(date +%s)" ]; then
+      info "提醒: $f 的日期在未来，Hugo 正式构建时不会发布它"
+    fi
+  fi
+}
+
+cmd_publish() {
+  if [ $# -gt 0 ]; then
+    git -C "$ROOT" add -- "$@"
+  else
+    git -C "$ROOT" add -A
+  fi
+
+  if git -C "$ROOT" diff --cached --quiet; then
+    info "没有需要提交的改动"
+    return 0
+  fi
+
+  # 注意 -c core.quotePath=false：否则中文文件名会被转义成 "content/notes/\346..." 这种形式
+  local msg f
+  f="$(git -C "$ROOT" -c core.quotePath=false diff --cached --name-only --diff-filter=ACM -- content | head -n1 || true)"
+  if [ -n "$f" ]; then
+    local t
+    t="$(title_of "$ROOT/$f")"
+    if [ -n "$t" ]; then
+      msg="[$(basename "$(dirname "$f")")] $t"
+    fi
+  fi
+  [ -n "${msg:-}" ] || msg="content: 更新 $(git -C "$ROOT" diff --cached --name-only | wc -l | tr -d ' ') 个文件"
+
+  while IFS= read -r f; do
+    [ -n "$f" ] && warn_about "$f"
+  done < <(git -C "$ROOT" -c core.quotePath=false diff --cached --name-only)
+
+  git -C "$ROOT" commit -q -m "$msg"
+  ok "已提交: $msg"
+
+  if git -C "$ROOT" remote get-url origin >/dev/null 2>&1; then
+    if git -C "$ROOT" push -q 2>/dev/null; then
+      ok "已推送，等 CI 跑完就上线了"
+    else
+      info "push 失败，rebase 后重试"
+      git -C "$ROOT" pull --rebase --autostash
+      git -C "$ROOT" push -q
+      ok "已推送"
+    fi
+  else
+    info "还没配 remote，改动只在本地（git remote add origin <你的仓库>）"
+  fi
+}
+
+# ------------------------------------------------------------
+#  其他
+# ------------------------------------------------------------
+cmd_preview() {
+  cd "$ROOT"
+  info "预览: http://localhost:1313/（含草稿和未来日期）"
+  exec hugo server -D -F --navigateToChanged
+}
+
+cmd_build() {
+  cd "$ROOT"
+  hugo --gc --minify --cleanDestinationDir
+  ok "构建完成，产物在 public/"
+}
+
+cmd_tags() {
+  grep -rhoE '^tags:.*' "$CONTENT" \
+    | sed -E 's/^tags:[[:space:]]*\[//; s/\][[:space:]]*$//' \
+    | tr ',' '\n' \
+    | sed -E 's/^[[:space:]]*//; s/[[:space:]]*$//; s/^"//; s/"$//' \
+    | grep -v '^$' \
+    | sort | uniq -c | sort -rn
+}
+
+case "${1:-}" in
+  new)     shift; cmd_new "$@" ;;
+  post)    shift; cmd_new posts "$@" ;;
+  note)    shift; cmd_note "$@" ;;
+  reading) shift; cmd_new reading "$@" ;;
+  music)   shift; cmd_new music "$@" ;;
+  save)    shift; cmd_publish "$@" ;;
+  publish) shift; cmd_publish "$@" ;;
+  preview|serve) shift; cmd_preview ;;
+  build)   shift; cmd_build ;;
+  tags)    shift; cmd_tags ;;
+  ""|-h|--help|help) usage 0 ;;
+  *) die "未知命令: $1（用 blog --help 看用法）" ;;
+esac
