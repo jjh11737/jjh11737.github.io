@@ -69,7 +69,6 @@ frontmatter() { # $1=type $2=title $3=datetime $4=tags
   printf 'draft: false\n'
   case "$t" in
     post)    printf 'tags: %s\ncategories: []\nsummary: ""\n' "$tags" ;;
-    reading) printf 'author: ""\nstatus: "在读"\nrating: 0\nlink: ""\ntags: %s\n' "$tags" ;;
     music)   printf 'artist: ""\nlink: ""\ntags: %s\n' "$tags" ;;
     *)       printf 'tags: %s\n' "$tags" ;;
   esac

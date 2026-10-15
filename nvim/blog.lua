@@ -85,11 +85,11 @@ vim.api.nvim_create_user_command("BlogPublish", M.publish, { desc = "保存并�
 vim.api.nvim_create_user_command("BlogNew", function(opts)
   local type, title = opts.args:match("^(%S+)%s+(.+)$")
   if not type then
-    return notify("用法: :BlogNew posts 我的标题", 1)
+    return notify("用法: :BlogNew post 我的标题", 1)
   end
   M.new(type, title)
 end, { nargs = "+", complete = function()
-  return { "posts", "notes", "reading", "music" }
+  return { "post" }
 end, desc = "新建内容" })
 
 vim.keymap.set("n", "<leader>bp", M.publish, { desc = "blog: 发布当前文件" })
@@ -101,7 +101,7 @@ end, { nargs = "?", complete = function()
   return { "public", "hidden", "draft" }
 end, desc = "设置当前文件可见性" })
 vim.keymap.set("n", "<leader>bn", function()
-  local type = vim.fn.input("类型 (posts/notes/reading/music): ")
+  local type = vim.fn.input("类型 (post): ")
   if type == "" then
     return
   end

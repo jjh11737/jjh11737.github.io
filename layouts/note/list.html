@@ -1,12 +1,12 @@
-{{- /* post 栏目页 / 子栏目页（顶部导航 post 指向 /post/）。
+{{- /* note 栏目页 / 子栏目页（顶部导航 note 指向 /note/）。
 
        只列出**已公开**的笔记：判据是 frontmatter 里的 hiddenInRss: false，
        也就是 `blog vis <文件> public` 写进去的值。没公开的笔记不出现在这里，
        只能走 /note/search/ 或直达链接。
 
        两种页面共用一个模板：
-         /post/         有 .Sections，按分节（CS / 电子 / 数学 / 工具 / ysyx / 其他）分组
-         /post/ysyx/…   没有 .Sections，就列这一层自己（含子目录）的公开笔记
+         /note/         有 .Sections，按分节（CS / 电子 / 数学 / 工具 / ysyx / 其他）分组
+         /note/ysyx/…   没有 .Sections，就列这一层自己（含子目录）的公开笔记
 
        标签云只统计这个页面能列出来的公开笔记；点击标签就地过滤，
        用内联样式切换（不依赖 [hidden]，避免被 custom.css 的 display 覆盖）。 */ -}}
