@@ -1,6 +1,6 @@
 ---
 title: "笔记"
-description: "公开的笔记。没公开的只在这里的搜索页里能翻到"
+description: "公开的笔记"
 # HTML 给栏目页，NotesJSON 给只搜笔记的搜索索引，RSS 是这一区自己的 feed
 outputs: ["HTML", "NotesJSON", "RSS"]
 # 这一页是公开栏目，所以自己要被收录；下面的 cascade 才是“默认藏起来”
@@ -20,7 +20,6 @@ cascade:
     disable: true       # 默认：不进 sitemap.xml
 ---
 
-这里列出的都是被设为公开的笔记。没公开的笔记不会出现在这个列表里，
-只能用 `/n7k4xq/search/` 搜，或者从直达链接进。
+这里列出的都是被设为公开的笔记。
 
-把一篇笔记放上来：编辑器里 `<leader>bv` 选 public，或者 `blog vis <文件> public`，然后 `blog save`。
+> 如果你真想看我不想公开的...加个`/search`

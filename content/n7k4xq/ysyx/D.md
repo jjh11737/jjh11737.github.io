@@ -1,10 +1,4 @@
----
-title: "D阶段记录"
-date: 2026-09-27T00:00:00+08:00
-draft: false
-noteTags: ["ysyx", "Makefile", "汇编"]
----
-
+# D阶段记录
 
 >  D1 -> PA2阶段1
 >
@@ -158,7 +152,7 @@ noteTags: ["ysyx", "Makefile", "汇编"]
 
   > 同上
 
-- 为什么非得这样？我们完全可以规定好保存的责任嘛
+- 为什么非得这样？我们完全可以规定好保存的责任嘛，一半一半
 
   > 这是最常用的方案
 
@@ -520,8 +514,9 @@ run: insert-arg
 - 把ALL每次作为参数传入我们的verilator生成的可执行文件里面
 - 修改rtl代码，把pc_init改为0x80000000
 - 修改TRM的halt，变成ebreak
+    > 这个可以用`asm volatile`搞定
 
-好吧我这里写错了，这里实际上并没有ALL，而是后来被转换为了NAME，对应`Makefile.<NAME>`，因为Makefile这么写的：
+好吧我这里写错了，这里实际上并没有ALL，而是后来被转换为了NAME，对应Makefile.<NAME>，因为Makefile这么写的：
 ```makefile
 Makefile.%: tests/%.c latest
 	@/bin/echo -e "NAME = $*\nSRCS = $<\ninclude $${AM_HOME}/Makefile" > $@
@@ -609,4 +604,11 @@ NEMU实现了端口映射和内存映射，但无论如何本质都是映射，�
 
 #### 设备
 
-`nemu/src/device/device.c`里面包含和SDL库相关的代码
+`nemu/src/device/device.c`里面包含和SDL库相关的代码，其中`init_device`
+- `init_map`初始化
+- 对设备进行初始化
+- `init_alarm`设置定时器
+
+另一方面，`cpu_exec()`在执行每条指令后都会调用`device_update()`来更新设备状态
+
+
