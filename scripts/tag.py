@@ -6,7 +6,7 @@
     python3 scripts/tag.py --clear [文件...]  # 删掉自动写的标签 key
 
 规则表：scripts/tag-rules.tsv（格式见文件内注释）。
-笔记区（content/n7k4xq/）写的是 noteTags —— 这是一个普通字段，不是 Hugo 分类法，
+post 栏（content/post/）写的是 noteTags —— 这是一个普通字段，不是 Hugo 分类法，
 所以不会生成公开的标签页；其他区域写 tags，会生成 /tags/ 页面和对应的 feed。
 """
 
@@ -16,7 +16,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RULES = os.path.join(ROOT, "scripts", "tag-rules.tsv")
-NOTES_PREFIX = "content/n7k4xq/"
+NOTES_PREFIX = "content/post/"
 THRESHOLD = 3  # 关键词只在正文里出现时，至少要命中这么多次
 MAX_TAGS = 6
 
@@ -32,6 +32,14 @@ def load_rules(path):
             if len(parts) >= 3:
                 rules.append((parts[0], parts[1], parts[2]))
     return rules
+
+
+def read_text(path):
+    """读取时保留原始换行，只把 CRLF 归一成 LF、丢掉孤立的 CR。
+    不这么做的话，Windows 换行（CRLF）里的 \\r 会在改 frontmatter 时被当成换行，
+    把某个字段（比如 title）拆成两行 —— 之前就踩过这个坑。"""
+    raw = open(path, encoding="utf-8", newline="").read()
+    return raw.replace("\r\n", "\n").replace("\r", "")
 
 
 def collect_targets(paths):
@@ -134,7 +142,7 @@ def main():
 
     for rel in targets:
         path = os.path.join(ROOT, rel)
-        text = open(path, encoding="utf-8").read()
+        text = read_text(path)
         fm, body, _ = split_frontmatter(text)
         if fm is None:
             skipped += 1

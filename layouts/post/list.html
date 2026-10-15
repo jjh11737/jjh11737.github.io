@@ -1,9 +1,18 @@
-{{- /* 笔记区的栏目页（顶部导航“笔记”指向这里）。
-       只列出**已公开**的笔记（frontmatter 里 hiddenInRss: false，也就是 blog vis ... public 写的值）；
-       没公开的笔记不会出现在这里，只能走 /n7k4xq/search/ 或直达链接。
-       标签云同样只统计这些公开笔记；点击标签就地过滤，用内联样式切换（不依赖 [hidden]，避免被 CSS 的 display 覆盖）。 */ -}}
+{{- /* post 栏目页 / 子栏目页（顶部导航 post 指向 /post/）。
+
+       只列出**已公开**的笔记：判据是 frontmatter 里的 hiddenInRss: false，
+       也就是 `blog vis <文件> public` 写进去的值。没公开的笔记不出现在这里，
+       只能走 /post/search/ 或直达链接。
+
+       两种页面共用一个模板：
+         /post/         有 .Sections，按分节（CS / 电子 / 数学 / 工具 / ysyx / 其他）分组
+         /post/ysyx/…   没有 .Sections，就列这一层自己（含子目录）的公开笔记
+
+       标签云只统计这个页面能列出来的公开笔记；点击标签就地过滤，
+       用内联样式切换（不依赖 [hidden]，避免被 custom.css 的 display 覆盖）。 */ -}}
 {{- define "main" }}
 {{- $all := where .RegularPagesRecursive "Params.hiddenInRss" false }}
+{{- $own := where .RegularPages "Params.hiddenInRss" false }}
 
 <header class="page-header">
   <h1>{{ .Title }}</h1>
@@ -17,11 +26,11 @@
 {{- end }}
 
 <div class="notes-toolbar">
-  <a class="notes-search-link" href="{{ "n7k4xq/search/" | relURL }}">搜索全部笔记 →</a>
+  <a class="notes-search-link" href="{{ "post/search/" | relURL }}">搜索全部笔记 →</a>
   <span class="notes-count">公开 {{ len $all }} 篇</span>
 </div>
 
-{{- /* 标签云：只统计公开笔记 */ -}}
+{{- /* 标签云 */ -}}
 {{- $counts := dict }}
 {{- range $all }}
   {{- range .Params.noteTags }}
@@ -37,30 +46,27 @@
 {{- end }}
 
 {{- if $all }}
-{{- range .Sections }}
+  {{- range .Sections }}
   {{- $sec := . }}
   {{- $pub := where .RegularPagesRecursive "Params.hiddenInRss" false }}
   {{- with $pub }}
   <section class="note-group" data-note-group>
     <h2 class="note-group-head">{{ $sec.Title }}<sup class="note-group-count">{{ len $pub }}</sup></h2>
     <ul class="note-list">
-      {{- range .ByDate.Reverse }}
-      <li class="note-item" data-note="{{ with .Params.noteTags }}{{ delimit . " " }}{{ end }}">
-        <a class="note-item-title" href="{{ .RelPermalink }}">{{ .Title }}</a>
-        <time class="note-item-date">{{ .Date.Format "2006-01-02" }}</time>
-        {{- with .Params.noteTags }}
-        <span class="note-item-tags">{{ range . }}#{{ . }} {{ end }}</span>
-        {{- end }}
-      </li>
-      {{- end }}
+      {{- range .ByDate.Reverse }}{{ partial "post_item.html" . }}{{ end }}
     </ul>
   </section>
   {{- end }}
-{{- end }}
+  {{- end }}
+  {{- with $own }}
+  <section class="note-group" data-note-group>
+    <ul class="note-list">{{ range .ByDate.Reverse }}{{ partial "post_item.html" . }}{{ end }}</ul>
+  </section>
+  {{- end }}
 {{- else }}
 <p class="notes-empty">
-  这个栏目里还没有公开的笔记。把某篇笔记设成公开，它就会出现在这里——在 nvim 里按 <code>&lt;leader&gt;bv</code> 选 public，
-  或者跑 <code>blog vis content/n7k4xq/…/xxx.md public</code>，然后 <code>blog save</code>。
+  这里还没有公开的笔记。把某篇设成公开它就会出现——nvim 里按 <code>&lt;leader&gt;bv</code> 选 public，
+  或者跑 <code>blog vis content/post/…/xxx.md public</code>，然后 <code>blog save</code>。
 </p>
 {{- end }}
 

@@ -31,7 +31,7 @@ enableEmoji = true
   home = ["HTML", "RSS", "JSON"]
   section = ["HTML", "RSS"]
 
-# 笔记区自己的搜索索引：/n7k4xq/index.json（只包含笔记，不含博文）
+# post 栏自己的搜索索引：/post/index.json（只包含 post 栏的笔记，不含其他栏目）
 [outputFormats.NotesJSON]
   mediaType = "application/json"
   baseName = "index"
@@ -81,7 +81,7 @@ enableEmoji = true
   ShowFullTextinRSS = true # RSS 输出全文（<content:encoded>）
 
   # 首页“最近”流和归档页会抓这几个 section
-  mainSections = ["posts", "notes", "reading", "music"]
+  mainSections = ["posts", "ub"]
 
   # 首页“最近”显示条数（自定义模板 layouts/_partials/home_recent.html 读取）
   homeRecentCount = 8
@@ -110,11 +110,11 @@ enableEmoji = true
       name = "文章"
       url = "/posts/"
     [[params.profileMode.buttons]]
-      name = "短记"
-      url = "/notes/"
+      name = "post"
+      url = "/post/"
     [[params.profileMode.buttons]]
-      name = "标签"
-      url = "/tags/"
+      name = "UB"
+      url = "/ub/"
     [[params.profileMode.buttons]]
       name = "关于"
       url = "/about/"
@@ -136,21 +136,13 @@ enableEmoji = true
   url = "/posts/"
   weight = 10
 [[menu.main]]
-  name = "笔记"
-  url = "/n7k4xq/"
+  name = "post"
+  url = "/post/"
   weight = 15
 [[menu.main]]
-  name = "短记"
-  url = "/notes/"
+  name = "UB"
+  url = "/ub/"
   weight = 20
-[[menu.main]]
-  name = "阅读"
-  url = "/reading/"
-  weight = 30
-[[menu.main]]
-  name = "音乐"
-  url = "/music/"
-  weight = 40
 [[menu.main]]
   name = "标签"
   url = "/tags/"

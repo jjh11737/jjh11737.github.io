@@ -1,10 +1,13 @@
 ---
+title: "D阶段记录"
+date: 2026-09-27T00:00:00+08:00
 draft: false
 hiddenInRss: false
 searchHidden: false
 robotsNoIndex: false
 sitemap:
   disable: false
+noteTags: ["ysyx", "Makefile", "汇编"]
 ---
 # D阶段记录
 
@@ -656,7 +659,8 @@ void ioe_write(int reg, void *buf) { do_io(reg, buf); }
 
 `abstract-machine/am/src/platform/nemu/trm.c`里面`putch`就会把字符输出到串口里面
 
-> 我们之前就接触过了，`mainargs`被传送到`main`里面，但是具体是如何传输的?
+#### `mainargs`是如何传输的
+我们之前就接触过了，`mainargs`被传送到`main`里面，但是具体是如何传输的?
 实际上我们先前已经接触过了，还记得那个`python`的调用吗？使用的脚本是`abstract-machine/tools/insert-arg.py`:
 （它在`abstract-machine/scripts/platform/npc.mk`还是`nemu.mk`里面都调用了一句：
 ```makefile
@@ -737,5 +741,8 @@ endif
 > ```
 > 我们先分别编译然后链接，然后你就会发现结果完全是随机的...
 
+--------
+
+但是`native`的实现似乎不太一样，这是当然，都跑在linux里面了，直接一个`getenv()`就行了，在`native/platform.c`里面
 
 

@@ -129,6 +129,27 @@
   margin: calc(var(--gap) * 1.2) 0 0.5rem;
 }
 
+/* UB 栏目：子栏目标题比组标题大一号 */
+.ub-section-head {
+  font-size: 1.15rem;
+  font-weight: 500;
+  margin: calc(var(--gap) * 1.6) 0 0.2rem;
+}
+
+.ub-section-head sup {
+  font-size: 0.7rem;
+  margin-left: 0.4rem;
+  opacity: 0.7;
+  font-weight: 400;
+}
+
+.ub-section-desc,
+.media-empty {
+  font-size: 0.88rem;
+  color: var(--secondary);
+  margin: 0 0 0.4rem;
+}
+
 .media-count {
   font-size: 0.7rem;
   margin-left: 0.4rem;

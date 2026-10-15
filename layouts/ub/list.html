@@ -1,0 +1,49 @@
+{{- /* UB 栏目：/ub/ 下按子栏目（阅读 / 音乐 / 以后加的）分组展示；
+       子栏目自己的页面只列自己的条目。
+       条目样式由字段决定（有 author/status/rating 走阅读样式，有 artist 走音乐样式），
+       所以以后新增分类不用改模板。 */ -}}
+{{- define "main" }}
+<header class="page-header">
+  <h1>
+    {{ .Title }}
+    {{- with .OutputFormats.Get "rss" }}
+    <a class="rss-link" href="{{ .RelPermalink }}" title="RSS" aria-label="RSS">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round" height="20" width="20">
+        <path d="M4 11a9 9 0 0 1 9 9" />
+        <path d="M4 4a16 16 0 0 1 16 16" />
+        <circle cx="5" cy="19" r="1" />
+      </svg>
+    </a>
+    {{- end }}
+  </h1>
+  {{- with .Description }}
+  <div class="post-description">{{ . | markdownify }}</div>
+  {{- end }}
+</header>
+
+{{- with .Content }}
+<div class="post-content md-content">{{ . }}</div>
+{{- end }}
+
+{{- if .Sections }}
+  {{- range .Sections }}
+  {{- $sec := . }}
+  <h2 class="ub-section-head">
+    <a href="{{ $sec.RelPermalink }}">{{ $sec.Title }}</a><sup class="media-count">{{ len .RegularPages }}</sup>
+  </h2>
+  {{- with $sec.Description }}
+  <p class="ub-section-desc">{{ . }}</p>
+  {{- end }}
+  {{- if .RegularPages }}
+  {{- partial "ub_entries.html" .RegularPages.ByDate.Reverse }}
+  {{- else }}
+  <p class="media-empty">这块还是空的。</p>
+  {{- end }}
+  {{- end }}
+{{- else if .RegularPages }}
+  {{- partial "ub_entries.html" .RegularPages.ByDate.Reverse }}
+{{- else }}
+<p class="media-empty">这块还是空的。</p>
+{{- end }}
+{{- end }}

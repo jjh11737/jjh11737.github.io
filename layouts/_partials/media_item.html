@@ -1,8 +1,11 @@
 {{- $p := . }}
+{{- /* 样式由字段决定，而不是路径类型：有 author/status/rating → 阅读样式；有 artist → 音乐样式。
+       这样以后 UB 下加分类不用改模板。 */ -}}
+{{- $isReading := or $p.Params.author $p.Params.status (gt (int ($p.Params.rating | default 0)) 0) }}
 <article class="media-item">
   <div class="media-head">
     <a class="media-title" href="{{ $p.RelPermalink }}">{{ $p.Title }}</a>
-    {{- if eq $p.Type "reading" }}
+    {{- if $isReading }}
       {{- with $p.Params.author }}<span class="media-by">{{ . }}</span>{{ end }}
       {{- if gt (int ($p.Params.rating | default 0)) 0 }}
       <span class="chip chip-rating">{{ $p.Params.rating }}/5</span>

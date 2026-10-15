@@ -5,11 +5,11 @@
 # 只允许出现这张表里的标签，避免标签越滚越多。
 
 # ---- 目录规则（你的目录划分本身就是最可靠的信号）----
-path|content/n7k4xq/CS/|计算机
-path|content/n7k4xq/electronics/|电子
-path|content/n7k4xq/maths/|数学
-path|content/n7k4xq/Tools/|工具
-path|content/n7k4xq/ysyx/|ysyx
+path|content/post/CS/|计算机
+path|content/post/electronics/|电子
+path|content/post/maths/|数学
+path|content/post/Tools/|工具
+path|content/post/ysyx/|ysyx
 
 # ---- 关键词规则 ----
 kw|CSAPP|计算机系统

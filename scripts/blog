@@ -3,9 +3,9 @@
 #  blog —— 个人主页的发布工具
 #
 #  日常只会用到这几条：
-#    blog new posts "标题"    新建一篇，写完在 nvim 里按 <leader>bp
-#    blog note "一句话"       发一条短记，写完即提交推送
-#    blog wiki "标题" [分区]  新建一篇笔记（content/n7k4xq/，默认 draft 不发布）
+#    blog post "标题" [分区]  新建一篇 post（笔记，content/post/，默认 draft 不发布）
+#    blog article "标题"      新建一篇文章（content/posts/，公开）
+#    blog ub <分类> "标题"    新建一条 UB 条目，如 blog ub reading "《书名》"
 #    blog save <文件>         提交并推送指定文件（nvim 的 <leader>bp 调的就是它）
 #
 #  其他：
@@ -15,12 +15,13 @@
 #    blog tags                看标签统计
 #    blog vis <文件> [public|hidden|draft]   控制单篇是否公开
 #    blog tag [--apply]       按规则表自动生成标签（默认只预览）
+#    blog doctor              体检：扫一遍内容，报告缺 title/date、未来日期等问题
 # ============================================================
 set -euo pipefail
 
 ROOT="$(cd -- "$(dirname -- "$(readlink -f -- "$0")")/.." && pwd)"
 CONTENT="$ROOT/content"
-TYPES=(posts notes reading music)
+TYPES=(posts)
 
 die() { printf '\033[31m×\033[0m %s\n' "$*" >&2; exit 1; }
 ok() { printf '\033[32m✓\033[0m %s\n' "$*" >&2; }
@@ -68,21 +69,21 @@ frontmatter() { # $1=type $2=title $3=datetime $4=tags
   printf 'draft: false\n'
   case "$t" in
     posts)   printf 'tags: %s\ncategories: []\nsummary: ""\n' "$tags" ;;
-    notes)   printf 'tags: %s\n' "$tags" ;;
     reading) printf 'author: ""\nstatus: "在读"\nrating: 0\nlink: ""\ntags: %s\n' "$tags" ;;
     music)   printf 'artist: ""\nlink: ""\ntags: %s\n' "$tags" ;;
+    *)       printf 'tags: %s\n' "$tags" ;;
   esac
   printf -- '---\n\n'
 }
 
-new_file() { # $1=type $2=title $3=tags -> 输出文件路径
-  local type="$1" title="$2" tags="$3"
-  local file="$CONTENT/$type/$(date +%Y-%m-%d)-$(slugify "$title").md"
+new_file() { # $1=内容子目录 $2=标题 $3=frontmatter 模板名 $4=标签 -> 输出文件路径
+  local dir="$1" title="$2" tmpl="$3" tags="$4"
+  local file="$CONTENT/$dir/$(date +%Y-%m-%d)-$(slugify "$title").md"
   if [ -e "$file" ]; then
     info "已存在: $file"
   else
-    mkdir -p "$CONTENT/$type"
-    frontmatter "$type" "$title" "$(date +%Y-%m-%dT%H:%M:%S%:z)" "$tags" > "$file"
+    mkdir -p "$CONTENT/$dir"
+    frontmatter "$tmpl" "$title" "$(date +%Y-%m-%dT%H:%M:%S%:z)" "$tags" > "$file"
     ok "新建: ${file#"$ROOT"/}"
   fi
   printf '%s' "$file"
@@ -98,7 +99,7 @@ cmd_new() {
   [ -n "$title" ] || die "缺少标题: blog new $type \"标题\""
 
   local file
-  file="$(new_file "$type" "$title" "$(to_yaml_tags "$tagarg")")"
+  file="$(new_file "$type" "$title" "$type" "$(to_yaml_tags "$tagarg")")"
   if [ -t 0 ] && [ -t 1 ]; then
     "${EDITOR:-nvim}" "$file"
   else
@@ -106,29 +107,28 @@ cmd_new() {
   fi
 }
 
-cmd_note() {
-  [ $# -gt 0 ] || usage 1
-  local text="$*" first rest title short
-  first="$(printf '%s\n' "$text" | head -n1)"
-  rest="$(printf '%s\n' "$text" | tail -n +2)"
+# ------------------------------------------------------------
+#  UB 栏目的条目
+#
+#    blog ub <分类> "标题" [标签]   分类 = content/ub/ 下的目录（reading / music / 以后加的）
+# ------------------------------------------------------------
+cmd_ub() {
+  local kind="${1:-}" title="${2:-}" tagarg="${3:-}"
+  local ub_root="$CONTENT/ub"
+  local kinds
+  kinds="$(ls "$ub_root" 2>/dev/null | grep -v '\.md$' | tr '\n' ' ' | sed 's/ $//')"
 
-  # 第一行当标题（太长就截断），剩下的当正文
-  title="$first"
-  [ "${#title}" -gt 40 ] && title="${title:0:40}"
-  short="${title:0:24}"
+  [ -n "$kind" ] || die "用法: blog ub <分类> \"标题\"（现有分类: $kinds）"
+  [ -n "$title" ] || die "用法: blog ub $kind \"标题\""
+  [ -d "$ub_root/$kind" ] || die "没有这个分类: $kind（现有: $kinds）"
 
-  local file="$CONTENT/notes/$(date +%Y-%m-%d-%H%M)-$(slugify "$short").md"
-  if [ -e "$file" ]; then
-    file="$CONTENT/notes/$(date +%Y-%m-%d-%H%M%S)-$(slugify "$short").md"
+  local file
+  file="$(new_file "ub/$kind" "$title" "$kind" "$(to_yaml_tags "$tagarg")")"
+  if [ -t 0 ] && [ -t 1 ]; then
+    "${EDITOR:-nvim}" "$file"
+  else
+    info "非交互环境，跳过后面的编辑器调用"
   fi
-  mkdir -p "$CONTENT/notes"
-  {
-    frontmatter notes "$title" "$(date +%Y-%m-%dT%H:%M:%S%:z)" "[]"
-    if [ -n "$rest" ]; then printf '%s\n' "$rest"; fi
-  } > "$file"
-  ok "新建短记: ${file#"$ROOT"/}"
-
-  cmd_publish "${file#"$ROOT"/}"
 }
 
 # ------------------------------------------------------------
@@ -142,6 +142,16 @@ title_of() {
 warn_about() { # $1=相对 ROOT 的路径
   local f="$1" abs="$ROOT/$1" d
   [ -f "$abs" ] || return 0
+  case "$f" in
+    content/*.md | content/*/*.md | content/*/*/*.md) ;;
+    *) return 0 ;; # 只检查内容文件
+  esac
+  if ! grep -q '^title:' "$abs" 2>/dev/null; then
+    info "提醒: $f 没有 title，页面上会是空标题（跑一下 blog doctor 可以整体体检）"
+  fi
+  if ! grep -q '^date:' "$abs" 2>/dev/null; then
+    info "提醒: $f 没有 date，不会进归档页、RSS 里的排序也会乱"
+  fi
   if grep -qE '^draft:[[:space:]]*true' "$abs" 2>/dev/null; then
     info "提醒: $f 是 draft，线上不会渲染"
   fi
@@ -167,7 +177,7 @@ cmd_publish() {
     return 0
   fi
 
-  # 注意 -c core.quotePath=false：否则中文文件名会被转义成 "content/notes/\346..." 这种形式
+  # 注意 -c core.quotePath=false：否则中文文件名会被转义成 "content/post/\346..." 这种形式
   local msg f
   f="$(git -C "$ROOT" -c core.quotePath=false diff --cached --name-only --diff-filter=ACM -- content | head -n1 || true)"
   if [ -n "$f" ]; then
@@ -249,7 +259,8 @@ cmd_vis() {
 import re, sys
 
 path = sys.argv[1]
-lines = open(path, encoding='utf-8').read().split('\n')
+raw = open(path, encoding='utf-8', newline='').read()
+lines = raw.replace('\r\n', '\n').replace('\r', '').split('\n')
 if not lines or lines[0].strip() != '---':
     print(f'{path}: 没有 frontmatter')
     sys.exit(0)
@@ -305,7 +316,8 @@ VALUES = {
 }
 managed = '|'.join(sorted({'draft', 'hiddenInRss', 'searchHidden', 'robotsNoIndex', 'sitemap'}))
 
-lines = open(path, encoding='utf-8').read().split('\n')
+raw = open(path, encoding='utf-8', newline='').read()
+lines = raw.replace('\r\n', '\n').replace('\r', '').split('\n')
 if lines and lines[0].strip() == '---':
     end = next((i for i, l in enumerate(lines[1:], 1) if l.strip() == '---'), None)
     if end is None:
@@ -340,18 +352,18 @@ PY
 }
 
 # ------------------------------------------------------------
-#  写笔记（content/n7k4xq/ 下的 wiki 笔记）
+#  写 post（content/post/ 下的笔记）
 #
-#    blog wiki "标题" [分区]   分区默认 others，可选值见 content/n7k4xq/ 下的目录
+#    blog post "标题" [分区]   分区默认 others，可选值见 content/post/ 下的目录
 #    默认写 draft: true —— 存下来了但线上完全不存在，想发再 blog vis
 # ------------------------------------------------------------
-cmd_wiki() {
+cmd_post() {
   local title="${1:-}" section="${2:-others}"
-  local notes_root="$CONTENT/n7k4xq"
+  local notes_root="$CONTENT/post"
   local sections
   sections="$(ls "$notes_root" 2>/dev/null | grep -v '\.md$' | tr '\n' ' ' | sed 's/ $//')"
 
-  [ -n "$title" ] || die "用法: blog wiki \"标题\" [分区]（分区默认 others，可选: $sections）"
+  [ -n "$title" ] || die "用法: blog post \"标题\" [分区]（分区默认 others，可选: $sections）"
   local dir="$notes_root/$section"
   [ -d "$dir" ] || die "分区不存在: $section（可选: $sections）"
 
@@ -372,7 +384,7 @@ cmd_wiki() {
     printf 'draft: true\n'
     printf -- '---\n\n'
   } > "$file"
-  ok "新建笔记: ${file#"$ROOT"/}"
+  ok "新建 post: ${file#"$ROOT"/}"
   info "现在是 draft：本地能预览，线上不会出现（详见 blog vis）"
 
   if [ -t 0 ] && [ -t 1 ]; then
@@ -388,7 +400,7 @@ cmd_wiki() {
 
   info "接下来："
   info "  blog vis ${file#"$ROOT"/} hidden   # 只有直达链接能看，不进栏目"
-  info "  blog vis ${file#"$ROOT"/} public   # 出现在顶部导航的「笔记」栏目里"
+  info "  blog vis ${file#"$ROOT"/} public   # 出现在顶部导航的 post 栏目里"
   info "  然后 blog save 或 nvim 里 <leader>bp 推上去"
 }
 
@@ -414,17 +426,17 @@ cmd_tag() {
 
 case "${1:-}" in
   new)     shift; cmd_new "$@" ;;
-  post)    shift; cmd_new posts "$@" ;;
-  note)    shift; cmd_note "$@" ;;
-  reading) shift; cmd_new reading "$@" ;;
-  music)   shift; cmd_new music "$@" ;;
+  article) shift; cmd_new posts "$@" ;;
+  post)    shift; cmd_post "$@" ;;
+  wiki)    shift; cmd_post "$@" ;;
+  ub)      shift; cmd_ub "$@" ;;
   save)    shift; cmd_publish "$@" ;;
   publish) shift; cmd_publish "$@" ;;
   preview|serve) shift; cmd_preview ;;
   build)   shift; cmd_build ;;
   tags)    shift; cmd_tags ;;
   tag)     shift; cmd_tag "$@" ;;
-  wiki)    shift; cmd_wiki "$@" ;;
+  doctor)  shift; exec python3 "$ROOT/scripts/doctor.py" "$@" ;;
   vis|visibility) shift; cmd_vis "$@" ;;
   ""|-h|--help|help) usage 0 ;;
   *) die "未知命令: $1（用 blog --help 看用法）" ;;

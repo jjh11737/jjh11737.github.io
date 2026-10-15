@@ -1,0 +1,23 @@
+{{- /* 一组 UB 条目：有 status 字段的按 在读/想读/读完 分组，否则按日期平铺 */ -}}
+{{- $pages := . }}
+{{- $statuses := slice "在读" "想读" "读完" }}
+{{- $hasStatus := false }}
+{{- range $pages }}
+  {{- if .Params.status }}{{ $hasStatus = true }}{{ end }}
+{{- end }}
+
+{{- if $hasStatus }}
+  {{- range $statuses }}
+  {{- $label := . }}
+  {{- with where $pages "Params.status" $label }}
+  <h3 class="media-group-head">{{ $label }}<sup class="media-count">{{ len . }}</sup></h3>
+  <div class="media-list">{{ range . }}{{ partial "media_item.html" . }}{{ end }}</div>
+  {{- end }}
+  {{- end }}
+  {{- with where $pages "Params.status" "not in" $statuses }}
+  <h3 class="media-group-head">未标注<sup class="media-count">{{ len . }}</sup></h3>
+  <div class="media-list">{{ range . }}{{ partial "media_item.html" . }}{{ end }}</div>
+  {{- end }}
+{{- else }}
+  <div class="media-list">{{ range $pages }}{{ partial "media_item.html" . }}{{ end }}</div>
+{{- end }}
