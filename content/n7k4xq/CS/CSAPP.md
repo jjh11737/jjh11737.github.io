@@ -2,6 +2,11 @@
 title: "CSAPP"
 date: 2026-08-17T00:00:00+08:00
 draft: false
+hiddenInRss: false
+searchHidden: false
+robotsNoIndex: false
+sitemap:
+  disable: false
 ---
 
 ## 一、计算机系统漫游
