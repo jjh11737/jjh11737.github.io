@@ -4,7 +4,6 @@ date: 2026-10-15
 hiddenInRss: true
 ---
 
-<!-- TODO: 这段换成你自己的话 -->
 
 你好，我是 jjh。
 
