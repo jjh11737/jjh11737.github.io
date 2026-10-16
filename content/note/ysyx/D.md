@@ -745,4 +745,75 @@ endif
 
 但是`native`的实现似乎不太一样，这是当然，都跑在linux里面了，直接一个`getenv()`就行了，在`native/platform.c`里面
 
+#### 时钟
+
+不知道为什么，我一开始运行时发现什么都不输出
+一开始我认为是我`printf`实现的问题，毕竟我还没有实现`%02d`的匹配，但是我在读取时钟前后分别加了个很简单的`printf`，结果发现就不对了，第二个没有打印，也就是说，我的程序卡在读取这一步了？
+```c
+  while (1) {
+    printf("0\n");
+    while(io_read(AM_TIMER_UPTIME).us / 1000000 < sec) ;        // 看来卡在这里了
+    rtc = io_read(AM_TIMER_RTC);
+    printf("1\n");
+```
+> 仅仅输出0
+
+嗯，那就得看到底是如何获取了
+```c
+static void rtc_io_handler(uint32_t offset, int len, bool is_write) {
+  assert(offset == 0 || offset == 4);
+  if (!is_write && offset == 4) {
+    uint64_t us = get_time();
+    rtc_port_base[0] = (uint32_t)us;
+    rtc_port_base[1] = us >> 32;
+  }
+}
+```
+显然，它需要这个`offset==4`，否则就不会读取...? 换句话说，想要触发更新，我们就必须读一次高位才行... 换句话说，即使我们是riscv32,但是为了方便必须先读高位然后不用，再读低位
+> 为什么要这样设计？
+好吧我还是不太清楚这个到底是如何被调用的，我看了同文件后面，有一句：
+```c
+43:  add_pio_map ("rtc", CONFIG_RTC_PORT, rtc_port_base, 8, rtc_io_handler);
+45:  add_mmio_map("rtc", CONFIG_RTC_MMIO, rtc_port_base, 8, rtc_io_handler);
+```
+嗯，然后就是回去看`add_mmio_map`了，依旧`rg`：
+```c
+/* device interface */
+void add_mmio_map(const char *name, paddr_t addr, void *space, uint32_t len, io_callback_t callback) {
+  assert(nr_map < NR_MAP);
+  paddr_t left = addr, right = addr + len - 1;
+  if (in_pmem(left) || in_pmem(right)) {
+    report_mmio_overlap(name, left, right, "pmem", PMEM_LEFT, PMEM_RIGHT);
+  }
+  for (int i = 0; i < nr_map; i++) {
+    if (left <= maps[i].high && right >= maps[i].low) {
+      report_mmio_overlap(name, left, right, maps[i].name, maps[i].low, maps[i].high);
+    }
+  }
+
+  maps[nr_map] = (IOMap){ .name = name, .low = addr, .high = addr + len - 1,
+    .space = space, .callback = callback };
+  Log("Add mmio map '%s' at [" FMT_PADDR ", " FMT_PADDR "]",
+      maps[nr_map].name, maps[nr_map].low, maps[nr_map].high);
+
+  nr_map ++;
+}
+```
+很显然，这里是给它绑定了一个`callback`,我们再找一下：
+```c
+nemu/src/device/io/map.c
+45:static void invoke_callback(io_callback_t c, paddr_t offset, int len, bool is_write) {
+59:  invoke_callback(map->callback, offset, len, false); // prepare data to read
+69:  invoke_callback(map->callback, offset, len, true);
+```
+
+嗯，无论如何，`time.c`里面的写法确定了，我们可以先读高位然后丢掉，把低位返回：
+```c
+void __am_timer_uptime(AM_TIMER_UPTIME_T *uptime) {
+  inl(RTC_ADDR + 4);
+  uptime->us = inl(RTC_ADDR);
+}
+```
+
+但是很显然... 此时还不能完整显示，因为`%02d`我没办法
 

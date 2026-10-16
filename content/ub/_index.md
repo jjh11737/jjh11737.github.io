@@ -1,6 +1,6 @@
 ---
 title: "UB"
-description: "undefined"
-aliases: ["/reading/", "/music/"]  
+description: "undefined behavior"
+aliases: ["/essay/", "/music/"]  
 ---
 
