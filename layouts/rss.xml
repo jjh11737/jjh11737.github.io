@@ -1,10 +1,3 @@
-{{- /* 基于主题的 layouts/rss.xml 改写，只改了“收哪些页面”这一段：
-       1. 主页 feed：只收 params.mainSections 里的内容，并且跳过 hiddenInRss 的页面
-          —— 笔记区即使有笔记被设为公开，也不会混进主页 feed
-       2. 带 noteFeed: true 的 section（目前是 note 栏）：收整棵子树，不受 hiddenInRss 影响
-          —— /note/index.xml 就是这一栏自己的 feed
-       3. 其他情况（分类法、普通 section）：保持主题原本的行为
-       升级主题时 diff 一下主题这个文件的尾部（channel/item 部分）有没有变化。 */ -}}
 {{- $authorEmail := "" }}
 {{- with site.Params.author }}
   {{- if reflect.IsMap . }}

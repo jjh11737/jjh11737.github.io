@@ -1,6 +1,4 @@
 {{- $p := . }}
-{{- /* 样式由字段决定，而不是路径类型：有 author/status/rating → 带元信息的样式；有 artist → 音乐样式。
-       这样以后 UB 下加分类不用改模板。 */ -}}
 {{- $hasMeta := or $p.Params.author $p.Params.status (gt (int ($p.Params.rating | default 0)) 0) }}
 <article class="media-item">
   <div class="media-head">

@@ -1,9 +1,6 @@
-{{- /* 首页“最近”：把主 section（文章 / UB）和被设为公开的 post 混成一条动态流 */ -}}
 {{- $labels := dict "posts" "文章" "ub" "UB" "post" "post" }}
 {{- $count := site.Params.homeRecentCount | default 8 }}
-{{- /* 主 section 的页面，去掉显式标记为不公开的 */ -}}
 {{- $pages := where (where site.RegularPages "Params.hiddenInRss" "!=" true) "Type" "in" site.Params.mainSections }}
-{{- /* 再加上显式公开的页面：典型情况是隐藏区里被 blog vis 设成 public 的笔记 */ -}}
 {{- $pages = union $pages (where site.RegularPages "Params.hiddenInRss" false) }}
 {{- $pages = where $pages "Params.hiddenInHomeList" "!=" true }}
 {{- $pages = $pages.ByDate.Reverse }}

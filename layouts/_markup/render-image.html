@@ -1,4 +1,3 @@
-{{- /* 和主题一致，但把 RelPermalink 换成绝对 URL：RSS 阅读器里图片才不会全挂 */ -}}
 {{- $u := urls.Parse .Destination -}}
 {{- $src := $u.String -}}
 {{- if not $u.IsAbs -}}
