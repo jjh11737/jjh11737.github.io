@@ -793,7 +793,7 @@ void add_mmio_map(const char *name, paddr_t addr, void *space, uint32_t len, io_
 
   maps[nr_map] = (IOMap){ .name = name, .low = addr, .high = addr + len - 1,
     .space = space, .callback = callback };
-  Log("Add mmio map '%s' at [" FMT_PADDR ", " FMT_PADDR "]",
+  Log("Add mmio map '%s' at [" FltMT_PADDR ", " FMT_PADDR "]",
       maps[nr_map].name, maps[nr_map].low, maps[nr_map].high);
 
   nr_map ++;
@@ -815,5 +815,19 @@ void __am_timer_uptime(AM_TIMER_UPTIME_T *uptime) {
 }
 ```
 
-但是很显然... 此时还不能完整显示，因为`%02d`我没办法
+但是很显然... 此时还不能完整显示，因为`%02d`我的`printf`还不能处理
+
+我的`printf`写法：
+为了方便起见，我修改了`stdio.h`的实现，原本的`internal_formatter()`只能往字符串写，而现在我准备传入一个函数指针和另一个指针，这样统一调用这个函数我们就可以复用代码了：
+```c
+typedef void (*sink_t) (char ch, void *ctx);
+static void inline sink_dump(char ch, void *ctx){
+  putch(ch);
+}
+static void inline sink_buf(char ch, void *ctx) {
+  *(char *)ctx = ch;
+}
+static int internal_formatter(sink_t out, void *ctx, size_t n, const char *fmt, va_list ap){
+```
+
 
