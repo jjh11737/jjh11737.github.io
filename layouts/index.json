@@ -1,0 +1,9 @@
+{{- /* 全站搜索索引。搜索只匹配标题，因此不输出正文和摘要，避免首页
+       下载数百 KB 的不可搜索内容。 */ -}}
+{{- $index := slice -}}
+{{- range site.RegularPages -}}
+  {{- if and (not .Params.searchHidden) (ne .Layout "archives") (ne .Layout "search") -}}
+    {{- $index = $index | append (dict "title" .Title "permalink" .Permalink) -}}
+  {{- end -}}
+{{- end -}}
+{{- $index | jsonify -}}

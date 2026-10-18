@@ -141,7 +141,79 @@ noteTags: ["ysyx", "Makefile", "汇编"]
   ```
 
   我们看看汇编：
-
+```asm
+sum:
+.LFB0:
+	.cfi_startproc
+	addi	sp,sp,-80
+	.cfi_def_cfa_offset 80
+	sw	ra,44(sp)
+	sw	s0,40(sp)
+	.cfi_offset 1, -36
+	.cfi_offset 8, -40
+	addi	s0,sp,48
+	.cfi_def_cfa 8, 32
+	sw	a0,-36(s0)
+	sw	a1,4(s0)
+	sw	a2,8(s0)
+	sw	a3,12(s0)
+	sw	a4,16(s0)
+	sw	a5,20(s0)
+	sw	a6,24(s0)
+	sw	a7,28(s0)
+	addi	a5,s0,32
+	sw	a5,-40(s0)
+	lw	a5,-40(s0)
+	addi	a5,a5,-28
+	sw	a5,-32(s0)
+	sw	zero,-24(s0)
+	sw	zero,-20(s0)
+	sw	zero,-28(s0)
+	j	.L2
+.L3:
+	lw	a5,-32(s0)
+	addi	a5,a5,7
+	andi	a5,a5,-8
+	addi	a4,a5,8
+	sw	a4,-32(s0)
+	lw	a0,0(a5)
+	lw	a1,4(a5)
+	lw	a2,-24(s0)
+	lw	a3,-20(s0)
+	add	a4,a2,a0
+	mv	a6,a4
+	sltu	a6,a6,a2
+	add	a5,a3,a1
+	add	a3,a6,a5
+	mv	a5,a3
+	sw	a4,-24(s0)
+	sw	a5,-20(s0)
+	lw	a5,-28(s0)
+	addi	a5,a5,1
+	sw	a5,-28(s0)
+.L2:
+	lw	a4,-28(s0)
+	lw	a5,-36(s0)
+	blt	a4,a5,.L3
+	lw	a4,-24(s0)
+	lw	a5,-20(s0)
+	mv	a0,a4
+	mv	a1,a5
+	lw	ra,44(sp)
+	.cfi_restore 1
+	lw	s0,40(sp)
+	.cfi_restore 8
+	.cfi_def_cfa 2, 80
+	addi	sp,sp,80
+	.cfi_def_cfa_offset 0
+	jr	ra
+	.cfi_endproc
+.LFE0:
+	.size	sum, .-sum
+	.align	1
+	.globl	g1
+	.type	g1, @function
+```
 
 
 #### 2 控制权的转移

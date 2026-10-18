@@ -1,10 +1,11 @@
 {{- /* note 栏自己的搜索索引，输出到 /note/index.json
        主题的 fastsearch.js 请求的是相对路径 ../index.json，
-       所以 /note/search/ 这个页面拿到的正好是这份索引（只有这一栏的笔记，不含其他栏目）。 */ -}}
+       所以 /note/search/ 这个页面拿到的正好是这份索引（只有这一栏的笔记，不含其他栏目）。
+       搜索只匹配标题，所以正文和摘要不进入索引。 */ -}}
 {{- $i := slice -}}
 {{- range where site.RegularPages "Section" .Section -}}
   {{- if and (ne .Layout `search`) (ne .Layout `archives`) -}}
-    {{- $i = $i | append (dict "title" .Title "content" .Plain "permalink" .Permalink "summary" .Summary) -}}
+    {{- $i = $i | append (dict "title" .Title "permalink" .Permalink) -}}
   {{- end -}}
 {{- end -}}
 {{- $i | jsonify -}}

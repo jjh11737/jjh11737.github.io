@@ -90,12 +90,12 @@ enableEmoji = true
   [params.comments]
     enable = false
 
-  # 搜索：本地 Fuse.js，不依赖任何外部服务
+  # 搜索：本地 Fuse.js，不依赖任何外部服务；只按标题匹配
   [params.fuseOpts]
     iscasesensitive = false
     threshold = 0.4
     ignorelocation = true
-    keys = ["title", "permalink", "summary", "content"]
+    keys = ["title"]
 
   # 首页 hero。把头像丢到 static/avatar.png 再把 imageUrl 填成 "/avatar.png"
   [params.profileMode]
