@@ -1,8 +1,13 @@
 ---
 title: "信号与系统"
 date: 2026-08-17T00:00:00+08:00
-draft: false
 noteTags: ["数学", "信号与系统"]
+draft: false
+hiddenInRss: false
+searchHidden: false
+robotsNoIndex: false
+sitemap:
+  disable: false
 ---
 
 

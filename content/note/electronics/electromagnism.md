@@ -1,8 +1,13 @@
 ---
 title: "电磁场学习笔记"
 date: 2026-08-17T00:00:00+08:00
-draft: false
 noteTags: ["电子", "电磁场"]
+draft: false
+hiddenInRss: false
+searchHidden: false
+robotsNoIndex: false
+sitemap:
+  disable: false
 ---
 
 （期中前的暂略）
