@@ -1,6 +1,6 @@
 ---
 title: "D阶段记录"
-date: 2026-09-27T00:00:00+08:00
+date: 2026-10-23T00:14:50+08:00
 draft: false
 hiddenInRss: false
 searchHidden: false
@@ -640,15 +640,32 @@ int fetch_command(int pc){
 
 而关于判断`HIT GOOD/BAD TRAP`，我的方法比较粗暴，直接看轮数是不是太多了，超过了上限就代表卡死了，或许可以用别的方法？我的想法大概是比如直接统一`ebreak`并且置位寄存器给出返回值
 
+---
+> 我之前搞错了！
+> 读了一下`nemu.h`，发现正确的`halt`可能还是看返回值合适！（因为我现在的代码只要是碰到`ebreak`就`HIT GOOD TRAP`，这...当然能通过了
+> 那么正确的代码应该是：
+> ```c
+> void halt(int code) {
+> //  while (1);
+>   asm volatile("mv a0, %0; ebreak" : :"r"(code));   // 参考nemu.h的
+>   while(1);
+> }
+> ```
+> 而在rtl里面我们则需要引出寄存器`rf[10]`也就是`a0`的值到顶层，这样最后判断它的值就可以确定对错了
+> 不过为了防止死循环，我还是保留了原来的轮数上限的判断
+
+---
+
+
 ## D5 设备和I/O
 
 所谓访问设备，就是读出数据+写入数据+控制状态（实际上单片机基本上就是在干这件事）
 
 而想要实现输入输出，有：
 
-1. 端口映射IO： 也就是我们通过port访问，CPU使用专门的I/O指令对设备进行访问，而设备的地址就是**端口号**，这样只需要给出端口号给IO指令就可以直接完成访问
+1. **端口映射IO** ： 也就是我们通过port访问，CPU使用专门的I/O指令对设备进行访问，而设备的地址就是**端口号**，这样只需要给出端口号给IO指令就可以直接完成访问
 
-2. 内存映射(MMIO)：很显然，端口映射不是一种很好的方法，因为端口是写死在指令集里面的，如果I/O设备更多那就会出问题，因此更好的方法是我们直接把对应的设备编址为内存物理地址
+2. **内存映射(MMIO)** ：很显然，端口映射不是一种很好的方法，因为端口是写死在指令集里面的，如果I/O设备更多那就会出问题，因此更好的方法是我们直接把对应的设备编址为内存物理地址
     这样的好处就很大了，我们可以随时扩展，而且几乎不可能需要担心I/O地址的空间不够用，因此risc架构仅支持MMIO的方法
 
 ### 状态机视角下的I/O
@@ -716,7 +733,7 @@ void ioe_write(int reg, void *buf) { do_io(reg, buf); }
       ({ reg##_T __io_param; \
         ioe_read(reg, &__io_param); \
         __io_param; })
-
+    
     #define io_write(reg, ...) \
       ({ reg##_T __io_param = (reg##_T) { __VA_ARGS__ }; \
         ioe_write(reg, &__io_param); })
@@ -789,7 +806,7 @@ else
 	@$(LD) $(LDFLAGS) -o $@ --start-group $(LINKAGE) --end-group
 endif
 ```
-嗯，前面我们对每个文件都生成了`.o`的可重定位目标文件，其中`CFLAGS`里面就包含了替换操作，也就是说它会找到所有名为``的然后替换为对应的内容，而刚好它就在`trm.c`里面：
+ 前面我们对每个文件都生成了`.o`的可重定位目标文件，其中`CFLAGS`里面就包含了替换操作，也就是说它会找到所有名为``的然后替换为对应的内容，而刚好它就在`trm.c`里面：
 ```c
 12:static const char mainargs[MAINARGS_MAX_LEN] = TOSTRING(MAINARGS_PLACEHOLDER); // defined in CFLAGS
 25:void _trm_init() {
@@ -830,7 +847,7 @@ endif
 ```
 > 仅仅输出0
 
-嗯，那就得看到底是如何获取了
+ 那就得看到底是如何获取了
 ```c
 static void rtc_io_handler(uint32_t offset, int len, bool is_write) {
   assert(offset == 0 || offset == 4);
@@ -848,7 +865,7 @@ static void rtc_io_handler(uint32_t offset, int len, bool is_write) {
 43:  add_pio_map ("rtc", CONFIG_RTC_PORT, rtc_port_base, 8, rtc_io_handler);
 45:  add_mmio_map("rtc", CONFIG_RTC_MMIO, rtc_port_base, 8, rtc_io_handler);
 ```
-嗯，然后就是回去看`add_mmio_map`了，依旧`rg`：
+ 然后就是回去看`add_mmio_map`了，依旧`rg`：
 ```c
 /* device interface */
 void add_mmio_map(const char *name, paddr_t addr, void *space, uint32_t len, io_callback_t callback) {
@@ -879,7 +896,7 @@ nemu/src/device/io/map.c
 69:  invoke_callback(map->callback, offset, len, true);
 ```
 
-嗯，无论如何，`time.c`里面的写法确定了，我们可以先读高位然后丢掉，把低位返回：
+无论如何，`time.c`里面的写法确定了，我们可以先读高位然后丢掉，把低位返回：
 ```c
 void __am_timer_uptime(AM_TIMER_UPTIME_T *uptime) {
   inl(RTC_ADDR + 4);
@@ -887,7 +904,7 @@ void __am_timer_uptime(AM_TIMER_UPTIME_T *uptime) {
 }
 ```
 
-但是很显然... 此时还不能完整显示，因为`%02d`我的`printf`还不能处理
+但是很显然... 此时还不能完整显示，因为`%02d`我的`printf`还不能处理（以及`printf`本身也压根没实现）
 
 我的`printf`写法：
 为了方便起见，我修改了`stdio.h`的实现，原本的`internal_formatter()`只能往字符串写，而现在我准备传入一个函数指针和另一个指针，这样统一调用这个函数我们就可以复用代码了：
@@ -901,5 +918,331 @@ static void inline sink_buf(char ch, void *ctx) {
 }
 static int internal_formatter(sink_t out, void *ctx, size_t n, const char *fmt, va_list ap){
 ```
+
+----
+> 好吧我承认我的实现有问题... 如果一个个的写入，怎么想都会很麻烦啊，虽然我写好了对应的format的parse部分，但是碰到输出部分我可是一点也不想写了... 在连续3天打开一点也不想动之后，我决定还是改一下好了
+
+然后先处理decimal的输出，大概要注意的规则：
+- 有了`-`左对齐/ 指定了precision时， `0`会自动失效，也就是说补零只会在左边
+总算实现了！
+
+
+
+然后就是想办法让几个演示程序运行起来，嗯... 要求是借助提供的堆实现，而`malloc`的行为应该就是：如果没有初始化那就初始化为`heap.start`，否则变成上一次分配内存的尾部。
+无论如何，最重要的还是RTFSC，先找一下`heap`：
+```bash
+abstract-machine/am/src/platform/nemu/trm.c
+4:extern char _heap_start;
+7:Area heap = RANGE(&_heap_start, PMEM_END);
+```
+在看一下`Area`：
+```bash
+abstract-machine/klib/include/klib-macros.h
+7:#define RANGE(st, ed)       (Area) { .start = (void *)(st), .end = (void *)(ed) }
+abstract-machine/am/include/am.h
+// Memory area for [@start, @end)
+typedef struct {
+  void *start, *end;
+} Area;
+```
+
+
+#### 实现Dtrace：
+这个很简单，反正每次调用时打印一下就好了，一路找过去我感觉还是`map.c`里面合适：
+```c
+word_t map_read(paddr_t addr, int len, IOMap *map) {
+  assert(len >= 1 && len <= 8);
+  check_bound(map, addr);
+  paddr_t offset = addr - map->low;
+  invoke_callback(map->callback, offset, len, false); // prepare data to read
+  word_t ret = host_read(map->space + offset, len);
+  #if  defined (CONFIG_DTRACE)
+    printf("READING: %s, DATA: %-d, LENGTH: %d\n", map->name, ret, len); 
+  #endif 
+  return ret;
+}
+void map_write(paddr_t addr, int len, word_t data, IOMap *map) {
+  assert(len >= 1 && len <= 8);
+  check_bound(map, addr);
+  #if  defined (CONFIG_DTRACE)
+    printf("WRITING: %s, DATA: %-d, LENGTH: %d\n", map->name, data, len); 
+  #endif 
+
+  paddr_t offset = addr - map->low;
+  host_write(map->space + offset, len, data);
+  invoke_callback(map->callback, offset, len, true);
+}
+```
+
+#### 键盘
+
+还是要实现一个对应的函数，我们还是先看看宏是怎么定义的：
+```c
+abstract-machine/am/include/amdev.h
+#define AM_DEVREG(id, reg, perm, ...) \
+  enum { AM_##reg = (id) }; \
+  typedef struct { __VA_ARGS__; } AM_##reg##_T;
+AM_DEVREG( 8, INPUT_KEYBRD, RD, bool keydown; int keycode);
+```
+根据宏的定义这里就很显然了，这个`AM_INPUT_KEYBRD`的结构体含有`keydown`和`keycode`
+
+但是如何读取呢？首先在`keyboard.c`里面我们发现好像只有一个函数不是`static`的...
+```c
+void send_key(uint8_t scancode, bool is_keydown) {
+  if (nemu_state.state == NEMU_RUNNING && keymap[scancode] != NEMU_KEY_NONE) {
+    uint32_t am_scancode = keymap[scancode] | (is_keydown ? KEYDOWN_MASK : 0);
+    key_enqueue(am_scancode);
+  }
+}
+```
+它干的事情就是把这个按键入队，那何时读取的？
+实际上在device.c里面的`device_update`里面。反正无论如何跟我们无关了，应该是通过SDL实现的，总之就是SDL碰到按键的事件
+
+```c
+// nemu/src/device/device.c 这是在`device_update`里面的
+#ifdef CONFIG_HAS_KEYBOARD
+      // If a key was pressed
+      case SDL_KEYDOWN:
+      case SDL_KEYUP: {
+        uint8_t k = event.key.keysym.scancode;
+        bool is_keydown = (event.key.type == SDL_KEYDOWN);
+        send_key(k, is_keydown);
+        break;
+      }
+#endif
+```
+而同样它也是最后调用了：
+```c
+  add_mmio_map("keyboard", CONFIG_I8042_DATA_MMIO, i8042_data_port_base, 4, i8042_data_io_handler);
+```
+额... 好吧，应该还是通过类似的方法读取吧？很显然这里只是一个长度为4也就是32bit的数据，在am里面用`inl`就能读取
+但是我怎么识别呢...我感觉我的上下文不够用了
+
+----
+那就先理一下思路！首先我们要先搞清楚整个设备初始化的流程：
+首先，任何设备的初始化都是从这里开始的：
+```c
+// nemu/src/device/device.c
+void init_device() {
+  IFDEF(CONFIG_TARGET_AM, ioe_init());
+  init_map();
+
+  IFDEF(CONFIG_HAS_SERIAL, init_serial());
+  IFDEF(CONFIG_HAS_TIMER, init_timer());
+  IFDEF(CONFIG_HAS_VGA, init_vga());
+  IFDEF(CONFIG_HAS_KEYBOARD, init_i8042());
+  IFDEF(CONFIG_HAS_AUDIO, init_audio());
+  IFDEF(CONFIG_HAS_DISK, init_disk());
+  IFDEF(CONFIG_HAS_SDCARD, init_sdcard());
+
+  IFNDEF(CONFIG_TARGET_AM, init_alarm());
+}
+```
+它会在`monitor.c`里面被调用，而他本身又调用了am里面的`ioe_init()`，它干的事情是检查一下`lut`查找表，把不需要的项设为`fail`（这样如果碰到访问就会报错），然后初始化一些设备
+
+---
+
+然后还是回到keyboard上，我们首先看一下这个宏吧？
+```c
+// nemu/src/device/keyboard.c
+#define NEMU_KEYS(f) \
+  f(ESCAPE) f(F1) f(F2) f(F3) f(F4) f(F5) f(F6) f(F7) f(F8) f(F9) f(F10) f(F11) f(F12) \
+f(GRAVE) f(1) f(2) f(3) f(4) f(5) f(6) f(7) f(8) f(9) f(0) f(MINUS) f(EQUALS) f(BACKSPACE) \
+f(TAB) f(Q) f(W) f(E) f(R) f(T) f(Y) f(U) f(I) f(O) f(P) f(LEFTBRACKET) f(RIGHTBRACKET) f(BACKSLASH) \
+f(CAPSLOCK) f(A) f(S) f(D) f(F) f(G) f(H) f(J) f(K) f(L) f(SEMICOLON) f(APOSTROPHE) f(RETURN) \
+f(LSHIFT) f(Z) f(X) f(C) f(V) f(B) f(N) f(M) f(COMMA) f(PERIOD) f(SLASH) f(RSHIFT) \
+f(LCTRL) f(APPLICATION) f(LALT) f(SPACE) f(RALT) f(RCTRL) \
+f(UP) f(DOWN) f(LEFT) f(RIGHT) f(INSERT) f(DELETE) f(HOME) f(END) f(PAGEUP) f(PAGEDOWN)
+
+#define NEMU_KEY_NAME(k) NEMU_KEY_ ## k,
+
+enum {
+  NEMU_KEY_NONE = 0,
+  MAP(NEMU_KEYS, NEMU_KEY_NAME)
+};
+```
+而我们知道`MAP`宏是长这样的：
+```c
+#define MAP(c, f) c(f)
+```
+
+当我们这里调用`MAP(NEMU_KEYS, NEMU_KEY_NAME)`时，它首先被展开为了：
+```c
+NEMU_KEYS(NEMU_KEY_NAME)
+```
+而再被继续展开：
+```c
+NEMU_KEY_NAME(ESCAPE) NEMU_KEY_NAME(F1)....
+```
+而再被展开：
+```c
+NEMU_KEY_ESCAPE, NEMU_KEY_F1, ...
+```
+结果实际上就是在`enum`里面定义了一系列枚举罢了。而在AM里面也有一套自己的：
+```c
+#define AM_KEYS(_) \
+  _(ESCAPE) _(F1) _(F2) _(F3) _(F4) _(F5) _(F6) _(F7) _(F8) _(F9) _(F10) _(F11) _(F12) \
+  _(GRAVE) _(1) _(2) _(3) _(4) _(5) _(6) _(7) _(8) _(9) _(0) _(MINUS) _(EQUALS) _(BACKSPACE) \
+  _(TAB) _(Q) _(W) _(E) _(R) _(T) _(Y) _(U) _(I) _(O) _(P) _(LEFTBRACKET) _(RIGHTBRACKET) _(BACKSLASH) \
+  _(CAPSLOCK) _(A) _(S) _(D) _(F) _(G) _(H) _(J) _(K) _(L) _(SEMICOLON) _(APOSTROPHE) _(RETURN) \
+  _(LSHIFT) _(Z) _(X) _(C) _(V) _(B) _(N) _(M) _(COMMA) _(PERIOD) _(SLASH) _(RSHIFT) \
+  _(LCTRL) _(APPLICATION) _(LALT) _(SPACE) _(RALT) _(RCTRL) \
+  _(UP) _(DOWN) _(LEFT) _(RIGHT) _(INSERT) _(DELETE) _(HOME) _(END) _(PAGEUP) _(PAGEDOWN)
+
+#define AM_KEY_NAMES(key) AM_KEY_##key,
+enum {
+  AM_KEY_NONE = 0,
+  AM_KEYS(AM_KEY_NAMES)
+};
+```
+完全一致！也就是说，我们只需要通过它的`keycode`就能直接得知！
+
+那`am_test`里面的`key_board.c`是怎么输出的？
+```c
+#define NAMEINIT(key)  [ AM_KEY_##key ] = #key,
+static const char *names[] = {
+  AM_KEYS(NAMEINIT)
+};
+```
+注意到这里的`#key`，它的作用就是把一个符号转换为字符串。换句话说这样我们就生成了一个查找表！！
+
+> NEMU的宏确实用的超好啊
+
+那还剩最后有一个问题了, 我该如何解析呢？
+实际上还是要回到`send_key`函数，它会把这个`code`或上`KEYDOWN_MASK`
+所以我们解析时先得处理`KEYDOWN_MASK`，然后把它送给`AM_INPUT_KEYBRD_T *kbd`
+看一下同目录的`include/nemu.h`：
+```c
+#define KBD_ADDR        (DEVICE_BASE + 0x0000060)
+```
+然后读取自然就是调用对应ISA的读取的函数了，riscv就是在`riscv/riscv.h`：
+```c
+static inline uint8_t  inb(uintptr_t addr) { return *(volatile uint8_t  *)addr; }
+static inline uint16_t inw(uintptr_t addr) { return *(volatile uint16_t *)addr; }
+static inline uint32_t inl(uintptr_t addr) { return *(volatile uint32_t *)addr; }
+```
+再看一下`amdev.h`，里面注册时给的是:
+```c
+AM_DEVREG( 8, INPUT_KEYBRD, RD, bool keydown; int keycode);
+```
+那么代码就是：
+```c
+void __am_input_keybrd(AM_INPUT_KEYBRD_T *kbd) {
+    uint32_t event = inl(KBD_ADDR);
+    kbd->keydown = !!(event & KEYDOWN_MASK);
+    kbd->keycode = event & ~KEYDOWN_MASK;
+}
+```
+
+
+#### VGA
+
+在`amdev.h`里面定义了5个：
+```c
+AM_DEVREG( 9, GPU_CONFIG,   RD, bool present, has_accel; int width, height, vmemsz);
+AM_DEVREG(10, GPU_STATUS,   RD, bool ready);
+AM_DEVREG(11, GPU_FBDRAW,   WR, int x, y; void *pixels; int w, h; bool sync);
+AM_DEVREG(12, GPU_MEMCPY,   WR, uint32_t dest; void *src; int size);
+AM_DEVREG(13, GPU_RENDER,   WR, uint32_t root);
+```
+
+但是VGA还有2个寄存器，屏幕大小寄存器和同步寄存器，我们需要实现它们，但是... 我还是不太明白nemu和am是怎么交互的，所以依旧RTFSC！
+
+首先是关于VGA的大小，我们可以很明显地看到现在的am里面并没有正确地实现，也就是`__am_gpu_config`里面，初始化给的还是0！那么我们看nemu里面的确已经实现了，`vga.c`里面有这个相关的实现并且已经在`init_vga`里面实现了！那么接下来的想法就是怎么让am知道？
+先RTFSC，看一下`init_vga`：
+```c
+void init_vga() {
+  vgactl_port_base = (uint32_t *)new_space(8);
+  vgactl_port_base[0] = (screen_width() << 16) | screen_height();
+#ifdef CONFIG_HAS_PORT_IO
+  add_pio_map ("vgactl", CONFIG_VGA_CTL_PORT, vgactl_port_base, 8, NULL);
+#else
+  add_mmio_map("vgactl", CONFIG_VGA_CTL_MMIO, vgactl_port_base, 8, NULL);
+#endif
+
+  vmem = new_space(screen_size());
+  add_mmio_map("vmem", CONFIG_FB_ADDR, vmem, screen_size(), NULL);
+  IFDEF(CONFIG_VGA_SHOW_SCREEN, init_screen());
+  IFDEF(CONFIG_VGA_SHOW_SCREEN, memset(vmem, 0, screen_size()));
+}
+```
+很明显，这个作为mmio被注册为`CONFIG_VGA_CTL_MMIO`，这看起来像是Kconfig定义的，那么我们应该`rg`搜索`VGA_CTL_MMIO`！
+```bash
+src/device/Kconfig
+78:config VGA_CTL_MMIO
+79:  hex "MMIO address of the VGA controller"
+80:  default 0xa0000100
+```
+回到`nemu.h`里面，发现刚好就是这个地址！（但是这样设计我一方改了不会出问题吗）
+```c
+#define VGACTL_ADDR     (DEVICE_BASE + 0x0000100)
+```
+那么就很简单了，我们只需要读取`VGACTL_ADDR`即可获取！
+但是`height`和`width`知道了，size怎么算呢？nemu里面定义的是`screen_width()*screen_height()*sizeof(uint32_t)`，而且我们现在也的确没有地方消费这个`.vmemsz`，和nemu保持一致就好
+
+```c
+void __am_gpu_config(AM_GPU_CONFIG_T *cfg) {
+  uint32_t wh = inl(VGACTL_ADDR); 
+  *cfg = (AM_GPU_CONFIG_T) {
+    .present = true, .has_accel = false,
+    .width = (wh >> 16), .height = (wh & 0xffff),
+    .vmemsz = (wh >> 16) * (wh & 0xffff) * sizeof(uint32_t)
+  };
+}
+```
+然后就是实现同步了，这个在am里面已经搞定了，要做的是在nemu里面检查`sync`是否就绪，我们知道在AM里面写的是：
+```c
+void __am_gpu_fbdraw(AM_GPU_FBDRAW_T *ctl) {
+  if (ctl->sync) {
+    outl(SYNC_ADDR, 1);
+  }
+}
+```
+`SYNC = VGACTL_ADDR + 4 = CONFIG_VGA_CTL_MMIO + 4 = vgactl_port_base[1]`，那么我们只需要管这一位即可
+然后就是`__am_gpu_init`了！显然因为是`init`，我们不能像`am_test`里面一样依赖`io_read`读取GPU config，所以正确的做法还是和刚才一样读取`VGACTL_ADDR`
+
+最后显示如下：
+![image-20261023111545705](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20261023111545705.png)
+
+这些都搞定了，那么接下来就是真正实现`__am_gpu_fbdraw`了，因为我们这里仅仅是判断了`sync`，并没有真正做什么，所以很自然`am_test`不会生效。而它传入的是：`AM_DEVREG(11, GPU_FBDRAW,   WR, int x, y; void *pixels; int w, h; bool sync);`，这部分没啥好说，照着写就好了：
+
+```c
+void __am_gpu_fbdraw(AM_GPU_FBDRAW_T *ctl) {
+  // first we should check the validness of input
+  if (ctl->pixels != NULL && ctl->w > 0 && ctl->h > 0) {
+    // then, get the screen size
+    int wh = inl(VGACTL_ADDR);
+    int screen_w = wh >> 16;
+    int screen_h = wh & 0xffff;
+    // then, get the i/o buffer
+    uint32_t *fb = (uint32_t *)(uintptr_t)FB_ADDR;
+    uint32_t *src = ctl->pixels;
+    // draw!
+    for(int r = 0; r < ctl->h; r++){
+      int y = r + ctl->y;
+      if (y < 0 || y >= screen_h) continue;
+      for(int c = 0; c < ctl->w; c++){
+         int x = c + ctl->x;
+         if(x < 0 || x >= screen_w) continue;
+         fb[y * screen_w + x] = src[r * ctl->w + c];
+      }
+    }
+  }
+  if (ctl->sync) {
+    outl(SYNC_ADDR, 1);
+  }
+}
+```
+
+最后还是：
+
+![image-20261023114101291](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20261023114101291.png)
+
+就可以跑mario了，不过注意要把debug的选项关掉，否则会超级卡！
+![image-20261023115412410](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20261023115412410.png)
+
+
+#### 声卡
+
 
 
