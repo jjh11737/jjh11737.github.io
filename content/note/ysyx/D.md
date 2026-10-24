@@ -1244,5 +1244,140 @@ void __am_gpu_fbdraw(AM_GPU_FBDRAW_T *ctl) {
 
 #### 声卡
 
+先看NEMU侧:
 
+首先我们还是通过SDL库的api来实现，想要播放音频需要：
+- `SDL_OpenAudio()`初始化音频子系统，需要提供频率/格式
+- 初始化后，就会调用注册时的回调函数
 
+而NEMU的简单声卡会在初始化时注册`0xa0000200`处的24字节的MMIO空间，它们都会映射到寄存器里面，而流缓冲区作为MMIO被注册在了`0xa1200000`长度为64KB
+```c
+// nemu.h
+#define AUDIO_ADDR      (DEVICE_BASE + 0x0000200)
+#define AUDIO_SBUF_ADDR (MMIO_BASE   + 0x1200000)
+```
+
+再看AM侧:
+`amdev.h`定义了这几个抽象寄存器：
+```c
+AM_DEVREG(14, AUDIO_CONFIG, RD, bool present; int bufsize);
+AM_DEVREG(15, AUDIO_CTRL,   WR, int freq, channels, samples);
+AM_DEVREG(16, AUDIO_STATUS, RD, int count);
+AM_DEVREG(17, AUDIO_PLAY,   WR, Area buf);
+```
+看一下测试里面调用的函数：
+```c
+void audio_test() {
+  if (!io_read(AM_AUDIO_CONFIG).present) {
+    printf("WARNING: %s does not support audio\n", TOSTRING(__ARCH__));
+    return;
+  }
+
+  io_write(AM_AUDIO_CTRL, 8000, 1, 1024);               
+
+  extern uint8_t audio_payload, audio_payload_end;
+  uint32_t audio_len = &audio_payload_end - &audio_payload;
+  int nplay = 0;
+  Area sbuf;
+  sbuf.start = &audio_payload;
+  while (nplay < audio_len) {
+    int len = (audio_len - nplay > 4096 ? 4096 : audio_len - nplay);
+    sbuf.end = sbuf.start + len;
+    io_write(AM_AUDIO_PLAY, sbuf);
+    sbuf.start += len;
+    nplay += len;
+    printf("Already play %d/%d bytes of data\n", nplay, audio_len);
+  }
+
+  // wait until the audio finishes
+  while (io_read(AM_AUDIO_STATUS).count > 0);
+}
+```
+
+很显然我们应该先从NEMU侧开始，先看`Kconfig`：
+```Kconfig
+if HAS_AUDIO
+config SB_ADDR
+  hex "Physical address of the audio stream buffer"
+  default 0xa1200000
+
+config SB_SIZE
+  hex "Size of the audio stream buffer"
+  default 0x10000
+
+config AUDIO_CTL_MMIO
+  hex "MMIO address of the audio controller"
+  default 0xa0000200
+endif # HAS_AUDIO
+```
+然后看看`device/audio.c`，我觉得这里有一个地方写的很有意思，枚举的最后一个刚好就等于寄存器的数量
+```c
+enum {
+  reg_freq,
+  reg_channels,
+  reg_samples,
+  reg_sbuf_size,
+  reg_init,   
+  reg_count,
+  nr_reg        // 相当于就是寄存器的数量！
+};
+```
+而看一下，`audio_io_handler()`作为回调函数还是一个空壳，而`init_audio()`里面仅仅是完成了MMIO的分配，前三个和`reg_init`我们没法初始化，毕竟是用户指定后才行
+那我们应该只需要把`reg_sbuf_size`设为`CONFIG_SB_SIZE`，把`reg_count`设为0表示还没有数据
+
+那么之后的`audio_io_handler`负责的应该就是对不同寄存器的读写做出反应。首先很显然就是先得搞定初始化，我们定义好了写入`init`就代表可以进行初始化了，可以参考`native`里面的实现，首先我们看一下被`SDL_OpenAudio`要求的`SDL_AudioSpec`：
+```c
+typedef struct SDL_AudioSpec
+{
+    int freq;                   /**< DSP frequency -- samples per second */
+    SDL_AudioFormat format;     /**< Audio data format */
+    Uint8 channels;             /**< Number of channels: 1 mono, 2 stereo */
+    Uint8 silence;              /**< Audio buffer silence value (calculated) */
+    Uint16 samples;             /**< Audio buffer size in sample FRAMES (total samples divided by channel count) */
+    Uint16 padding;             /**< Necessary for some compile environments */
+    Uint32 size;                /**< Audio buffer size in bytes (calculated) */
+    SDL_AudioCallback callback; /**< Callback that feeds the audio device (NULL to use SDL_QueueAudio()). */
+    void *userdata;             /**< Userdata passed to callback (ignored for NULL callbacks). */
+} SDL_AudioSpec;
+```
+那么主要是`callback`，它的描述是给音频设备喂数据，我们看一下这个函数的接口定义：
+```c
+typedef void (SDLCALL * SDL_AudioCallback) (void *userdata, Uint8 * stream, int len);
+```
+嗯，它的行为看起来就是搬运数据，而我们还是参考native的实现，就不把`sbuf`作为userdata对外暴露，而看看native给的实现：（我就不去官方源码里面找要求了）
+```c
+static void audio_play(void *userdata, uint8_t *stream, int len) {
+  int nread = len;
+  if (count < len) nread = count;
+  int b = 0;
+  while (b < nread) {
+    int n = read(rfd, stream, nread);
+    if (n > 0) b += n;
+  }
+
+  count -= nread;
+  if (len > nread) {
+    memset(stream + nread, 0, len - nread);
+  }
+}
+```
+具体来说，就是先确定要读取的长度，这个和native是一致的，然后同样是循环队列里面读取直到读了`nread`个，之后判断如果还不够，剩下的全置零，但是要注意还得让`reg_count`更新，否则am不知道这里被消费了，总之我这么写：
+```c
+static void audio_play(void *userdata, uint8_t *stream, int len){
+  int nread = audio_base[reg_count];
+  if(len < nread) nread = len;
+  int b = 0;
+  while (b < nread) {
+    // 保证不越界访问同时次数小于等于剩余要写的次数
+    int num = CONFIG_SB_SIZE - read_pos;
+    if ((nread - b) < num) num = nread - b;
+    memcpy(stream + b, sbuf + read_pos, num);
+    b += num;
+    read_pos = (read_pos + num) % CONFIG_SB_SIZE;
+  }
+  audio_base[reg_count] -= nread;
+  if (len > nread){
+    memset(stream + nread, 0, len - nread);
+  }
+}
+```

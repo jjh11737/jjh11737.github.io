@@ -16,6 +16,9 @@ enableEmoji = true
 [services.rss]
   limit = 50
 
+[services.googleAnalytics]
+  id = "G-RLD8VJ5L5Z"
+
 [outputs]
   home = ["HTML", "RSS", "JSON"]
   section = ["HTML", "RSS"]
