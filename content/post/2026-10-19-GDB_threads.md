@@ -9,6 +9,6 @@ summary: ""
 
 # GDB 调试多线程
 
-[官方手册](https://sourceware.org/gdb/current/onlinedocs/gdb.html/Threads.html)
-
+> [RTFM](https://sourceware.org/gdb/current/onlinedocs/gdb.html/Threads.html)
+> updating...
 

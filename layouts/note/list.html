@@ -1,6 +1,6 @@
 {{- define "main" }}
-{{- $all := where .RegularPagesRecursive "Params.hiddenInRss" false }}
-{{- $own := where .RegularPages "Params.hiddenInRss" false }}
+{{- $all := where (where .RegularPagesRecursive "Draft" false) "Layout" "not in" (slice "search" "archives") }}
+{{- $own := where (where .RegularPages "Draft" false) "Layout" "not in" (slice "search" "archives") }}
 
 <header class="page-header">
   <h1>{{ .Title }}</h1>
@@ -35,7 +35,7 @@
 {{- if $all }}
   {{- range .Sections }}
   {{- $sec := . }}
-  {{- $pub := where .RegularPagesRecursive "Params.hiddenInRss" false }}
+  {{- $pub := where (where .RegularPagesRecursive "Draft" false) "Layout" "not in" (slice "search" "archives") }}
   {{- with $pub }}
   <section class="note-group" data-note-group>
     <h2 class="note-group-head">{{ $sec.Title }}<sup class="note-group-count">{{ len $pub }}</sup></h2>

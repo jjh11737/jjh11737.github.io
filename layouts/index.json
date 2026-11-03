@@ -1,6 +1,6 @@
 {{- $index := slice -}}
 {{- range site.RegularPages -}}
-  {{- if and (not .Params.searchHidden) (ne .Layout "archives") (ne .Layout "search") -}}
+  {{- if and (ne .Section "note") (not .Draft) (not .Params.searchHidden) (ne .Layout "archives") (ne .Layout "search") -}}
     {{- $index = $index | append (dict "title" .Title "permalink" .Permalink) -}}
   {{- end -}}
 {{- end -}}

@@ -398,8 +398,8 @@ cmd_note() {
   fi
 
   info "接下来："
-  info "  blog vis ${file#"$ROOT"/} hidden   # 只有直达链接能看，不进栏目"
-  info "  blog vis ${file#"$ROOT"/} public   # 出现在顶部导航的 note 栏目里"
+  info "  blog vis ${file#"$ROOT"/} hidden   # 发布到 note 栏目，但不进搜索/RSS/sitemap"
+  info "  blog vis ${file#"$ROOT"/} public   # 发布到 note 栏目，并允许收录"
   info "  然后 blog save 或 nvim 里 <leader>bp 推上去"
 }
 

@@ -1,6 +1,6 @@
 ---
 title: "概率论与随机过程"
-date: 2026-09-09T00:00:00+08:00
+date: 2026-10-29T16:00:00+08:00
 draft: false
 noteTags: ["数学", "概率论"]
 ---
@@ -750,11 +750,15 @@ $$
 
 > 证明：
 >
-> 
+> 我们首先看X，从X的分布出发，由于严格单调，我们知道：
+> $$
+> P(c<Y<d)=P(c<g(x)<d)=P(h(c)<x<h(d))=\int_{h(a)}^{h(b)}f_X(x)dx
+> $$
+> 那么把变量更换一下就好了，$dx=h'(y)dy$，那么自然就等于$\int_a^bf_X(h(y))|h'(y)|dy$，而左侧分布本身就等于$\int_a^bf_Y(y)dy$，那就证明了...
 
 如果要求目标函数的概率密度，如果已知概率密度，那么完全可以按照这条函数路径积分，它等价于从负无穷到正无穷的对原概率密度函数的积分，但是要加上这个函数作为约束
 
-
+以及如果不是一一对应的变换，那么最保险通用的方法实际上还是直接求分布函数然后求导
 
 #### 二维连续型随机变量的函数的分布
 
@@ -805,6 +809,8 @@ $$
 
 
 
+总之其实都很简单，我们要做的就是最终把它转化为分布函数或者概率密度函数的积分的形式
+
 
 
 
@@ -816,13 +822,13 @@ $$
 
 ##### 数学期望
 
-离散：已知随机变量分布律$p_k$，若级数$\sum x_kp_k$绝对收敛，那么就称它为$X$的数学期望，记为E(X)
+离散：已知随机变量分布律$p_k$，若级数$\sum_{1}^{+\infty} x_kp_k$绝对收敛，那么就称它为$X$的数学期望，记为E(X)
 
-连续：$E(X)=\int_{-\infty}^{+\infty} xf(x)dx$，
+连续：$E(X)=\int_{-\infty}^{+\infty} xf(x)dx$，同样前提为绝对收敛，也即$\int_{-\infty}^{+\infty} |x|f(x)dx$收敛
 
-联合离散：比如我们已知$Z=g(X,Y)$，那么就是$E(Z)=\sum\sum g(x_i,y_j)p_{ij}$，
+离散随机向量：比如我们已知$Z=g(X,Y)$，那么就是$E(Z)=\sum\sum g(x_i,y_j)p_{ij}$，
 
-联合连续：
+连续随机向量：$EZ=Eg(X,Y)=\int_{-\infty}^{+\infty}\int_{-\infty}^{+\infty}g(x,y)f(x,y)dxdy$，同样要求绝对收敛
 
 ###### 性质
 
@@ -837,13 +843,231 @@ $D(X)=E(X-EX)^2=E(X^2)-E^2(X)$定义，也可写作$var(X)$
 
 而$\sqrt{DX}$称为标准差/均方差
 
-针对函数，由于我们在求期望，所以形式：$DX=E(X-EX)^2=\int (x-EX)^2f(x)dx$
+连续由概率密度函数：$DX=E(X-EX)^2=\int_{-\infty}^{+\infty} (x-EX)^2f(x)dx$
 
 ###### 性质
 
 - 如果$X,Y$为相互独立的随机变量，则有：
   - $D(X+Y)=D(X)+D(Y) \\ D(X-Y)=D(X)+D(Y)$
-  - $D(aX+bY+C)$
+  - $D(aX+bY+C)=a^2DX+b^2DYd$
+  - $D(XY)=D(XY)^2-[D(XY)]^2=EX^2EY^2-(EX)^2(EY)^2$
 
 
 
+##### 条件期望
+
+
+
+
+
+
+
+
+
+##### 常见随机变量的数学期望和方差
+
+##### 0-1分布
+
+$$
+EX=1p+0(1-p)=p \\
+EX^2=p \\
+DX=p(1-p)
+$$
+
+##### 二项分布
+
+$X$~$B(n,p)$，$P\{X=k\}=\binom nkp^k(1-p)^{n-k}$
+
+显然直接计算是愚蠢的，实际上由于是独立同分布，均服从0-1分布
+$$
+EX=E(\sum X_i)=\sum EX_i=np \\
+DX=D(\sum X_i)=\sum DX_i=\sum p(1-p)=np(1-p)
+$$
+
+
+##### 泊松分布
+
+$X$~$\prod (\lambda )$，也即：
+$$
+P\{X=k\}=\frac {e^{-\lambda} \lambda^k}{k!}
+$$
+根据离散型随机变量数学期望的定义：
+
+\[ \begin{aligned} E(X) &=\sum_{k=0}^{\infty}kP\{X=k\}\\ &=\sum_{k=0}^{\infty} k\frac{e^{-\lambda}\lambda^k}{k!} \\ &=e^{-\lambda}\sum_{k=1}^{\infty} \frac{k\lambda^k}{k!}\\ &=e^{-\lambda}\sum_{k=1}^{\infty} \frac{\lambda^k}{(k-1)!} \\ &=\lambda e^{-\lambda}\sum_{j=0}^{\infty}\frac {\lambda^j} {j!} \\ &= \lambda \end{aligned}\]
+
+而方差先求\[EX^2\]：
+
+\[ \begin{aligned} E(X^2) &=\sum_{k=0}^{\infty}k^2P\{X=k\}\\ &=e^{-\lambda}\sum_{k=1}^{\infty} \frac{k^2\lambda^k}{k!} \end{aligned} \]
+
+这里不能直接把 \(k^2\) 约掉，应该将其拆成：\[ k^2=k(k-1)+k\]，就有：
+
+\[ \begin{aligned} E(X^2) &=e^{-\lambda}\sum_{k=0}^{\infty} \frac{[k(k-1)+k]\lambda^k}{k!}\\ &=e^{-\lambda}\left[ \sum_{k=2}^{\infty} \frac{k(k-1)\lambda^k}{k!} +\sum_{k=1}^{\infty} \frac{k\lambda^k}{k!} \right]\\ & look~familiar? \\ &= \lambda^2 + \lambda \end{aligned} \]
+
+那么就有：
+
+\[ \begin{aligned} D(X) &=E(X^2)-[E(X)]^2\\ &=(\lambda^2+\lambda)-\lambda^2\\ &=\boxed{\lambda} \end{aligned} \]
+
+也就是说：\[ \boxed{E(X)=D(X)=\lambda} \]
+
+
+
+
+
+##### 指数分布
+
+懒得写了
+
+
+
+##### 正态分布
+
+求期望很简单，我们利用\[x-\mu\]期望为0即可。方差也差不多。
+
+
+
+
+
+##### 均匀分布
+
+
+
+
+
+
+
+
+
+### 常见分布的表
+
+#### 离散：
+
+| 分布                          | 概率质量函数                                            | \(E(X)\)       | \(D(X)\)                                    |
+| ----------------------------- | ------------------------------------------------------- | -------------- | ------------------------------------------- |
+| 0-1 分布 \(X\sim B(1,p)\)     | \(P(X=k)=p^k(1-p)^{1-k},\ k=0,1\)                       | \(p\)          | \(p(1-p)\)                                  |
+| 二项分布 \(X\sim B(n,p)\)     | \(P(X=k)=\binom nk p^k(1-p)^{n-k}\)                     | \(np\)         | \(np(1-p)\)                                 |
+| 泊松分布 \(X\sim P(\lambda)\) | \(P(X=k)=\dfrac{e^{-\lambda}\lambda^k}{k!}\)            | \(\lambda\)    | \(\lambda\)                                 |
+| 几何分布 \(X\sim G(p)\)       | \(P(X=k)=(1-p)^{k-1}p,\ k\ge1\)                         | \(\dfrac1p\)   | \(\dfrac{1-p}{p^2}\)                        |
+| 超几何分布 \(X\sim H(N,M,n)\) | \(P(X=k)=\dfrac{\binom Mk\binom{N-M}{n-k}}{\binom Nn}\) | \(n\dfrac MN\) | \(n\dfrac MN(1-\dfrac MN)\dfrac{N-n}{N-1}\) |
+
+#### 连续：
+
+| 分布                                | 概率密度函数 \(f(x)\)                                        | \(E(X)\)                    | \(D(X)\)                      |
+| ----------------------------------- | ------------------------------------------------------------ | --------------------------- | ----------------------------- |
+| 均匀分布 \(U(a,b)\)                 | \(\dfrac1{b-a},\ a<x<b\)                                     | \(\dfrac{a+b}{2}\)          | \(\dfrac{(b-a)^2}{12}\)       |
+| 指数分布 \(E(\lambda)\)             | \(\lambda e^{-\lambda x},\ x>0\)                             | \(\dfrac1\lambda\)          | \(\dfrac1{\lambda^2}\)        |
+| 正态分布 \(N(\mu,\sigma^2)\)        | \(\dfrac1{\sqrt{2\pi}\sigma}e^{-\frac{(x-\mu)^2}{2\sigma^2}}\) | \(\mu\)                     | \(\sigma^2\)                  |
+| 标准正态分布 \(N(0,1)\)             | \(\dfrac1{\sqrt{2\pi}}e^{-x^2/2}\)                           | \(0\)                       | \(1\)                         |
+| 伽马分布 \(\Gamma(\alpha,\lambda)\) | \(\dfrac{\lambda^\alpha}{\Gamma(\alpha)}x^{\alpha-1}e^{-\lambda x},\ x>0\) | \(\dfrac{\alpha}{\lambda}\) | \(\dfrac{\alpha}{\lambda^2}\) |
+
+#### 其他的：
+
+| 分布                   | 概率密度函数                                                 | \(E(X)\)                                   | \(D(X)\)                                               |
+| ---------------------- | ------------------------------------------------------------ | ------------------------------------------ | ------------------------------------------------------ |
+| 卡方分布 \(\chi^2(n)\) | \(\dfrac{x^{n/2-1}e^{-x/2}}{2^{n/2}\Gamma(n/2)},\ x>0\)      | \(n\)                                      | \(2n\)                                                 |
+| \(t\) 分布 \(t(n)\)    | \(\dfrac{\Gamma(\frac{n+1}{2})}{\sqrt{n\pi}\Gamma(\frac n2)}(1+\frac{x^2}{n})^{-\frac{n+1}{2}}\) | \(n>1\) 时为 \(0\)；\(n\le1\) 时期望不存在 | \(n>2\) 时为 \(\dfrac n{n-2}\)；\(n\le2\) 时方差不存在 |
+
+
+
+
+
+#### 协方差和相关系数
+
+##### 定义：
+
+$Cov(X,Y)=E[(X-EX)(Y-EY)]=E[XY-X\cdot EY-Y\cdot EX+EX\cdot EY]=E(XY)-EX\cdot EY$
+
+
+
+##### 性质：
+
+| 性质           | 公式                                                         |
+| -------------- | ------------------------------------------------------------ |
+| 自身协方差     | \(\operatorname{Cov}(X,X)=D(X)\)                             |
+| 对称性         | \(\operatorname{Cov}(X,Y)=\operatorname{Cov}(Y,X)\)          |
+| 与常数的协方差 | \(\operatorname{Cov}(X,c)=0\)                                |
+| 加常数不变     | \(\operatorname{Cov}(X+a,Y+b)=\operatorname{Cov}(X,Y)\)      |
+| 常数倍提取     | \(\operatorname{Cov}(aX,bY)=ab\operatorname{Cov}(X,Y)\)      |
+| 对加法的线性性 | \(\operatorname{Cov}(X+Y,Z)=\operatorname{Cov}(X,Z)+\operatorname{Cov}(Y,Z)\) |
+| 两个线性组合   | \(\operatorname{Cov}(aX+bY,cZ+dW)=ac\operatorname{Cov}(X,Z)+ad\operatorname{Cov}(X,W)+bc\operatorname{Cov}(Y,Z)+bd\operatorname{Cov}(Y,W)\) |
+
+- 方差$D(X)=Cov(X,X)$
+
+- 利用协方差的线性性质，能够推出：
+
+  \[ \boxed{D(X+Y)=D(X)+D(Y)+2\operatorname{Cov}(X,Y)} \]
+
+  同理，
+
+  \[ \boxed{D(X-Y)=D(X)+D(Y)-2\operatorname{Cov}(X,Y)} \]
+
+  更一般地，
+
+  \[ \boxed{D(aX+bY)=a^2D(X)+b^2D(Y)+2ab\operatorname{Cov}(X,Y)} \]
+
+
+
+##### 定理
+
+###### 1. 独立性定理
+
+若 \(X,Y\) 相互独立，则\[ E(XY)=E(X)E(Y) \]，因此有：
+
+\[ \boxed{X,Y\text{ 独立}\implies \operatorname{Cov}(X,Y)=0} \]
+
+**注意：逆命题不成立！**
+
+即使 \(\operatorname{Cov}(X,Y)=0\)，也不能一般地推出 \(X,Y\) 独立。
+
+> 例如，设 \(X\sim U(-1,1)\)，且 \(Y=X^2\)。显然 \(Y\) 完全由 \(X\) 决定，因此二者不独立。但由于
+>
+> \[ \begin{aligned} \operatorname{Cov}(X,Y) &=E(X^3)-E(X)E(X^2)\\ &=0-0\cdot E(X^2)\\ &=0 \end{aligned} \]
+>
+> 所以它们不相关，却不独立。
+
+###### 2. 柯西–施瓦茨不等式
+
+设任意随机变量的二阶矩$EX^2,EY^2$存在，那么下列不等式成立：
+$$
+|E(XY)|\leq \sqrt{EX^2} \cdot \sqrt{EY^2}
+$$
+
+> 证明
+
+\[ \boxed{|\operatorname{Cov}(X,Y)| \leq \sqrt{D(X)D(Y)}} \] or\[ \boxed{\operatorname{Cov}^2(X,Y) \leq D(X)D(Y)} \]
+
+###### 3. 相关系数定理
+
+当 \(D(X)>0,D(Y)>0\) 时，定义相关系数
+
+\[ \boxed{\rho_{XY}= \frac{\operatorname{Cov}(X,Y)} {\sqrt{D(X)}\sqrt{D(Y)}}} \]
+
+由柯西–施瓦茨不等式，
+
+\[ \boxed{-1\leq \rho_{XY}\leq 1} \]
+
+并且：
+
+- \(\rho_{XY}>0\)：正相关。
+- \(\rho_{XY}<0\)：负相关。
+- \(\rho_{XY}=0\)：不相关。
+- \(|\rho_{XY}|=1\)：存在常数 \(a,b\)，使得 \(Y=aX+b\) 几乎处处成立，其中 \(a\neq0\)。越接近1越近似于线性关系
+
+相关系数与协方差的区别是：协方差受变量的量纲和尺度影响，而相关系数没有量纲，且始终处于 \([-1,1]\) 内。
+
+###### 4. 联合正态分布定理
+
+若 \(X,Y\) 服从**联合正态分布**，也即\[(X,Y)\]~\[N(\mu_1,\sigma_1^2;\mu_2,\sigma_2^2;\rho)\]则：
+
+\[ \boxed{\operatorname{Cov}(X,Y)=0 \iff X,Y\text{ 独立}} \]
+
+这里必须强调“联合正态”，仅仅知道 \(X,Y\) 各自服从正态分布，并不足以保证这个结论成立。
+
+这也是协方差为零时，一个非常重要的特殊情形。
+
+
+
+
+
+#### 矩
+
+矩

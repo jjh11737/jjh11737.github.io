@@ -1,6 +1,6 @@
 ---
 title: "D阶段记录"
-date: 2026-10-23T00:14:50+08:00
+date: 2026-10-24T00:14:50+08:00
 draft: false
 hiddenInRss: false
 searchHidden: false
@@ -816,7 +816,13 @@ endif
 ```
 这方法确实很妙啊！我们这样最后在`_trm_init`里面调用`main`把参数传入就好了！
 
-> 而且实际上，我们最后链接时ld压根就不关心你实现的是什么... 毕竟符号解析时只知道有一个叫`main`的东西然后把它替换为地址罢了，比如一个很搞笑的例子：
+------
+那么重新理解一下，AM和NEMU的关系其实就是前者相当于编译出一个可执行文件，`objcopy`为一个`.bin`文件，然后交给NEMU这个解释器！换句话说，NEMU和我们的NPC算是等价的
+而设备的读写，都是通过内部的`inl / outl`之类的先翻译为对应的汇编指令，而NEMU作为解释器在碰到访存时，写就是写完调用对应handler，读是调用handler后再host_read一下
+
+------
+
+> 实际上，我们最后链接时ld压根就不关心你实现的是什么... 毕竟符号解析时只知道有一个叫`main`的东西然后把它替换为地址罢了，比如一个很搞笑的例子：
 > ```c
 > // file1.c
 > int f(int x);
@@ -1244,6 +1250,8 @@ void __am_gpu_fbdraw(AM_GPU_FBDRAW_T *ctl) {
 
 #### 声卡
 
+> 官方说是没有实现，但是我觉得配套的还是比较完善了，属于是补全就好了，而且有了native作为参考实现起来并不难
+
 先看NEMU侧:
 
 首先我们还是通过SDL库的api来实现，想要播放音频需要：
@@ -1346,6 +1354,7 @@ typedef void (SDLCALL * SDL_AudioCallback) (void *userdata, Uint8 * stream, int 
 ```
 嗯，它的行为看起来就是搬运数据，而我们还是参考native的实现，就不把`sbuf`作为userdata对外暴露，而看看native给的实现：（我就不去官方源码里面找要求了）
 ```c
+// native的
 static void audio_play(void *userdata, uint8_t *stream, int len) {
   int nread = len;
   if (count < len) nread = count;
@@ -1361,8 +1370,21 @@ static void audio_play(void *userdata, uint8_t *stream, int len) {
   }
 }
 ```
-具体来说，就是先确定要读取的长度，这个和native是一致的，然后同样是循环队列里面读取直到读了`nread`个，之后判断如果还不够，剩下的全置零，但是要注意还得让`reg_count`更新，否则am不知道这里被消费了，总之我这么写：
+具体来说，就是先确定要读取的长度，这个和native是一致的，然后同样是循环队列里面读取直到读了`nread`个，之后判断如果还不够，剩下的全置零，但是要注意还得让`reg_count`更新
+
+再读一下AM侧的源码，这个其实就没啥了吧？前面的都是给不同的内容配置一下即可
+
+然后就是剩下的读写的问题了
+
+嗯。不过在写之前，我们先得想清楚如何实现，一个重要的问题在于我们这里没法用管道传递，缓冲区始终是定长的，那么显然就像我们写单片机里面一样可以用一个环形缓冲区解决，生产和消费方各自维护一个写/读指针，而刚好我们这里提供了一个`reg_count`，共享它来确定双方的行为
+
+对于读的一方，事情其实相当简单，我们只需要模仿native的实现，读完缓冲区 / `len` 即可，如果没写到`len`剩下的补零
+而对于写的一方，主要是我们也不知道`ctl->buf`长度多少，那么还是不断写直到写完
+
+
+总之我这么写：
 ```c
+// 我写的
 static void audio_play(void *userdata, uint8_t *stream, int len){
   int nread = audio_base[reg_count];
   if(len < nread) nread = len;
@@ -1381,3 +1403,59 @@ static void audio_play(void *userdata, uint8_t *stream, int len){
   }
 }
 ```
+```c
+static void audio_write(uint8_t *buf, int len) {
+  uint32_t nr_write, count, free;
+  while(len > 0){
+    count = inl(AUDIO_COUNT_ADDR);
+    free = sbuf_size - count;
+    if(!free) continue;
+    // 有空位！
+    uint32_t to_end = sbuf_size - write_pos;
+    // 找到最小长度，写入后更新
+    nr_write = free;
+    nr_write = nr_write > len ? len : nr_write;
+    nr_write = nr_write > to_end ? to_end : nr_write; 
+    memcpy((void *)(uintptr_t)(AUDIO_SBUF_ADDR + write_pos), buf, nr_write);
+    write_pos = (write_pos + nr_write) % sbuf_size;
+    outl(AUDIO_COUNT_ADDR, count + nr_write);
+    buf += nr_write;
+    len -= nr_write;
+  }
+}
+```
+到此就可以播放了！
+
+然后问题就在于并发，我实际运行`bad-apple`的时候发现的确是播放到后面逐渐出现杂音，问题倒是很明显，出现在我们AM和NEMU都在读写这个`reg_init`，而偏偏不是原子的
+> RTFM？
+> 好吧我觉得找起来太麻烦了，所以我让ai帮我找在官方文档哪里有说明这方面了，没想到居然在[SDL_OpenAudioDevice](https://wiki.libsdl.org/SDL2/SDL_OpenAudioDevice)里面...（源码579行有注释说明）
+> > The audio callback runs in a separate thread in most cases; you can prevent race conditions between your callback and other threads without fully pausing playback with SDL_LockAudioDevice(). For more information about the callback, see SDL_AudioSpec.
+> 也就是说，这个`callback`是跑在单独的一个线程里面的！那么这就不奇怪了
+
+而我们通过`SDL_LockAudio`是可以阻止回调函数运行的，通过`SDL_UnlockAudio`则可以重新恢复，而它显然只能在NEMU这里调用
+那么我觉得我有一个很蠢但是应该肯定管用的方法，那就是我们直接通过读写来控制上锁与否，为了让读之后到写之前不被打断，一个很自然的想法是，我们直接不让它打断不就好了？也就是我们`inl(AUDIO_COUNT_ADDR)`时NEMU的`io_handler`调用`SDL_LockAudio`，`outl(AUDIO_COUNT_ADDR, count)`的时候再`SDL_UnlockAudio`解锁，这样就不会出现双方各更新各的了！而且好处是无论是哪一方都不会被打断，因为我们[官方手册](https://wiki.libsdl.org/SDL2/SDL_LockAudioDevice?utm_source=chatgpt.com)如是说：
+> Calling this function from inside your audio callback is unnecessary. SDL obtains this lock before calling your function, and releases it when the function returns.
+也就是说回调本身会持有设备的锁，不会被打断。
+但是事情也不是那么美好... 因为AM侧的轮询每次都要上锁解锁，开销还是很大的！但是起码我这样做是对的...
+
+
+
+
+
+### 在NPC的输入输出
+
+这里的IO就不直接模仿NEMU的设备模型了，而是为NPC在仿真环境中实现一套与流片SoC相近的设别模型（不过因为目前还没有总线，暂时还没法实现RTL层面的设备（不过我们在nju数电里面不是学过吗））
+
+串口部分就直接用`outb`搞定好了，然后对应直接`putchar`
+时钟的话，模仿NEMU即可。同样使用`clock_gettime()`，记录一个`boot_time`然后相减就对了，AM侧的实现同样即可
+
+
+
+
+嗯，捕捉死循环... 这其实本质就是halting problem嘛... 完美的方法我感觉想不出来，但是勉强能工作的方案呢？显然我们要做的是尽可能保守一点，也就是说只有我们能证明我们这个绝对是死循环了我们才可以这么做！
+最烂的思路就是看看指令数/时间，这是最老资历的方法了，嗯...就是比如watchdog嘛，嵌入式里面很常用的方法，也就是我们喂狗来保证程序还在跑而不是死了。但是这个方法至少很简单？
+另一种方法是我们检测状态机的状态，比如我们hash一下程序的状态比较一下看看对不对。但是这就牵扯到一个新的问题，我们如何定义哪些要监视？一个最简单的例子：`for(i=1;i>0;i++)`。那么我们可以进一步考虑，为什么我们要关注那些对我们退出压根无所谓的东西？或许...我们可以发现jal / jalr / branch 这种指令，然后想办法确定这个条件会不会被改变？（但是很明显设备又不能符合这一点），我们要发现的不应该是跳转本身，而是发现一个...loop？或者叫回边好了。嗯，我们试图证明的应该是在这个所谓回边里面，使它退出的条件是永远不可能达成的。换句话说我们不可能监视整个状态机，而是追踪退出的整条依赖链
+这个是有[文章](https://ieeexplore.ieee.org/stamp/stamp.jsp?tp=&arnumber=7588872)
+另一个思路则是...我们运行时在里面插入一些代码？嗯但是这个我只是隐隐约约觉得可行
+
+

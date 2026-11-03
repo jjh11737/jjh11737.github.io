@@ -1,7 +1,8 @@
 {{- $labels := dict "posts" "文章" "ub" "UB" "post" "post" }}
 {{- $count := site.Params.homeRecentCount | default 8 }}
-{{- $pages := where (where site.RegularPages "Params.hiddenInRss" "!=" true) "Type" "in" site.Params.mainSections }}
-{{- $pages = union $pages (where site.RegularPages "Params.hiddenInRss" false) }}
+{{- $pages := where site.RegularPages "Type" "in" site.Params.mainSections }}
+{{- $pages = where $pages "Params.hiddenInRss" "!=" true }}
+{{- $pages = where $pages "Draft" false }}
 {{- $pages = where $pages "Params.hiddenInHomeList" "!=" true }}
 {{- $pages = $pages.ByDate.Reverse }}
 {{- $pages = first $count $pages }}

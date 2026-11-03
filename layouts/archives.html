@@ -28,11 +28,11 @@
 </header>
 
 {{- $pages := where (where site.RegularPages "Params.hiddenInRss" "!=" true) "Type" "in" site.Params.mainSections }}
-{{- $pages = union $pages (where site.RegularPages "Params.hiddenInRss" false) }}
 
 {{- if site.Params.ShowAllPagesInArchive }}
-{{- $pages = site.RegularPages }}
+{{- $pages = where site.RegularPages "Section" "ne" "note" }}
 {{- end }}
+{{- $pages = where $pages "Draft" false }}
 
 {{- range $pages.GroupByPublishDate "2006" }}
 {{- if ne .Key "0001" }}

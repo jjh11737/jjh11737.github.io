@@ -89,8 +89,10 @@ sitemap:
     | `$readmemb`      | task          | **✅**    | ✅         | 从 binary 文件初始化 memory            |
 
 
+- 允许初始化数组，
 
-
+- 实际上verilog里面2001版本已经支持算术移位以及扩展了！比如我想算术右移，可以使用`>>>`
+    尤其是你可以直接给它加上`signed`的修饰，比如`wire signed a;`，而SV还支持task：`$signed(expr)`
 
 ## E4 
 
@@ -1385,6 +1387,9 @@ int main() {
 
 
 ## E5
+
+
+
 
 ### Verilog的仿真行为&编码风格
 

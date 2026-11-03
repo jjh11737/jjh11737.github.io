@@ -1,6 +1,6 @@
 {{- $i := slice -}}
 {{- range where site.RegularPages "Section" .Section -}}
-  {{- if and (ne .Layout `search`) (ne .Layout `archives`) -}}
+  {{- if and (not .Draft) (ne .Layout `search`) (ne .Layout `archives`) -}}
     {{- $i = $i | append (dict "title" .Title "permalink" .Permalink) -}}
   {{- end -}}
 {{- end -}}

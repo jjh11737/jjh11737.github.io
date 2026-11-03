@@ -20,7 +20,7 @@
 
 {{- $pages := slice }}
 {{- if and .IsSection (.Param "noteFeed") }}
-{{- $pages = .RegularPagesRecursive }}
+{{- $pages = where .RegularPagesRecursive "Draft" false }}
 {{- else if .IsHome }}
 {{- $pages = where (where site.RegularPages "Type" "in" site.Params.mainSections) "Params.hiddenInRss" "!=" true }}
 {{- else if .IsSection }}
@@ -28,6 +28,8 @@
 {{- else }}
 {{- $pages = where .Pages "Params.hiddenInRss" "!=" true }}
 {{- end }}
+{{- $pages = where $pages "Draft" false }}
+{{- $pages = $pages.ByLastmod.Reverse }}
 {{- $limit := site.Config.Services.RSS.Limit }}
 {{- if ge $limit 1 }}
 {{- $pages = $pages | first $limit }}

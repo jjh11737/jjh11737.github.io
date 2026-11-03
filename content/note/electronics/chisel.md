@@ -1,5 +1,5 @@
 ---
-title: "chisel.md"
+title: "chisel"
 date: 2026-10-23T16:56:52+08:00
 draft: true
 ---
