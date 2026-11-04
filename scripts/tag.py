@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
-"""按规则表给内容自动生成标签。
+"""按规则表为内容补充标签，并检查 note 的标签。
 
     python3 scripts/tag.py --dry              # 预览（默认）
-    python3 scripts/tag.py --apply [文件...]  # 写进 frontmatter
+    python3 scripts/tag.py --apply [文件...]  # 补充并写进 frontmatter
+    python3 scripts/tag.py --check [文件...]  # 检查标签，不修改文件
     python3 scripts/tag.py --clear [文件...]  # 删掉自动写的标签 key
 
 规则表：scripts/tag-rules.tsv（格式见文件内注释）。
 note 栏（content/note/）写的是 noteTags —— 这是一个普通字段，不是 Hugo 分类法，
 所以不会生成公开的标签页；其他区域写 tags，会生成 /tags/ 页面和对应的 feed。
+手写在 frontmatter 里的标签会被保留，规则表只负责补上缺失的自动标签。
 """
 
+import ast
+import csv
+import json
 import os
 import re
 import sys
@@ -71,6 +76,83 @@ def fm_get(fm, key):
     return m.group(1).strip() if m else None
 
 
+def parse_inline_tags(raw):
+    """解析一行 YAML/JSON 风格标签数组，不依赖 PyYAML。"""
+    raw = raw.strip()
+    if not raw:
+        return []
+    if raw.startswith("["):
+        try:
+            value = json.loads(raw)
+        except json.JSONDecodeError:
+            try:
+                value = ast.literal_eval(raw)
+            except (SyntaxError, ValueError):
+                if not raw.endswith("]"):
+                    raise ValueError("标签数组没有以 ] 结束")
+                rows = next(csv.reader([raw[1:-1]], skipinitialspace=True))
+                value = [row.strip().strip("\"'") for row in rows if row.strip()]
+    elif "," in raw:
+        rows = next(csv.reader([raw], skipinitialspace=True))
+        value = [row.strip().strip("\"'") for row in rows if row.strip()]
+    else:
+        value = [raw.strip("\"'")]
+    if not isinstance(value, list):
+        raise ValueError("标签必须是数组")
+    return value
+
+
+def fm_tags(fm, key):
+    """读取 inline 或 block-list 形式的标签字段。"""
+    lines = fm.split("\n")
+    for i, line in enumerate(lines):
+        m = re.match(r"^%s:\s*(.*)$" % re.escape(key), line)
+        if not m:
+            continue
+        raw = m.group(1).strip()
+        if raw:
+            return parse_inline_tags(raw)
+        tags = []
+        for child in lines[i + 1:]:
+            if not child.strip():
+                continue
+            item = re.match(r"^[ \t]+-\s+(.+?)\s*$", child)
+            if item:
+                tags.append(item.group(1).strip("\"'"))
+                continue
+            if child.startswith((" ", "\t")):
+                raise ValueError("标签列表项必须以 - 开头")
+            break
+        return tags
+    return []
+
+
+def normalize_tags(tags):
+    out = []
+    for tag in tags:
+        if not isinstance(tag, str):
+            raise ValueError("标签必须是字符串")
+        tag = tag.strip()
+        if not tag:
+            raise ValueError("标签不能为空")
+        out.append(tag)
+    return out
+
+
+def merge_tags(existing, generated):
+    """已有手写标签时完全保留；规则只给缺少标签的文档补默认值。"""
+    tags = []
+    for tag in normalize_tags(existing):
+        if tag not in tags:
+            tags.append(tag)
+    if tags:
+        return tags
+    for tag in normalize_tags(generated):
+        if tag not in tags and len(tags) < MAX_TAGS:
+            tags.append(tag)
+    return tags
+
+
 def classify(rel, fm, body):
     """返回 (标签列表, 每个标签的命中次数)。目录标签优先，关键词标签按命中次数排。"""
     title = fm_get(fm, "title") or ""
@@ -118,26 +200,36 @@ def write_frontmatter(text, key, tags=None):
     while lines and not lines[-1].strip():
         lines.pop()
     if tags:
-        lines.append("%s: [%s]" % (key, ", ".join('"%s"' % t for t in tags)))
+        encoded = ", ".join(json.dumps(t, ensure_ascii=False) for t in tags)
+        lines.append("%s: [%s]" % (key, encoded))
     return "---\n" + "\n".join(lines) + "\n---\n" + rest
 
 
 def main():
     argv = sys.argv[1:]
     mode = "--dry"
+    notes_only = False
     paths = []
     for a in argv:
         if a in ("--dry", "--dry-run"):
             mode = "--dry"
         elif a == "--apply":
             mode = "--apply"
+        elif a == "--check":
+            mode = "--check"
         elif a == "--clear":
             mode = "--clear"
+        elif a == "--notes":
+            notes_only = True
         else:
             paths.append(a)
 
     targets = collect_targets(paths)
+    if notes_only:
+        targets = [t for t in targets if t.startswith(NOTES_PREFIX)]
     changed, skipped = 0, 0
+    errors = []
+    checked = 0
     width = max((len(t) for t in targets), default=10)
 
     for rel in targets:
@@ -147,24 +239,44 @@ def main():
         if fm is None:
             skipped += 1
             continue
-        if fm_get(fm, "layout") in ("search", "archives"):
+        layout = fm_get(fm, "layout")
+        if layout and layout.strip("\"'") in ("search", "archives"):
             skipped += 1
             continue
 
         key = "noteTags" if rel.startswith(NOTES_PREFIX) else "tags"
         tags, hits = classify(rel, fm, body)
+        if mode == "--check" and rel.startswith(NOTES_PREFIX):
+            checked += 1
+        try:
+            existing = fm_tags(fm, key)
+        except ValueError as exc:
+            errors.append("%s：%s" % (rel, exc))
+            skipped += 1
+            continue
+        effective = merge_tags(existing, tags)
+
+        if mode == "--check":
+            if rel.startswith(NOTES_PREFIX):
+                if not existing:
+                    errors.append("%s：没有 noteTags" % rel)
+                elif len(existing) != len(set(existing)):
+                    errors.append("%s：noteTags 有重复项" % rel)
+            continue
 
         if mode == "--dry":
-            existing = fm_get(fm, key) or ""
             mark = "有" if existing else "  "
-            print("%s %-*s %s" % (mark, width, rel, ", ".join(tags) if tags else "(无命中)"))
+            print("%s %-*s %s" % (mark, width, rel, ", ".join(effective) if effective else "(无命中)"))
             continue
 
         if mode == "--apply":
-            if not tags:
+            if not effective:
                 skipped += 1
                 continue
-            new = write_frontmatter(text, key, tags)
+            if existing == effective:
+                skipped += 1
+                continue
+            new = write_frontmatter(text, key, effective)
         else:  # --clear
             new = write_frontmatter(text, key, None)
 
@@ -172,12 +284,22 @@ def main():
             open(path, "w", encoding="utf-8").write(new)
             changed += 1
 
+    if mode == "--check":
+        for error in errors:
+            print("× " + error, file=sys.stderr)
+        print("检查了 %d 篇 note：错误 %d" % (checked, len(errors)))
+        return 1 if errors else 0
+    for error in errors:
+        print("× " + error, file=sys.stderr)
+    if errors:
+        return 1
     if mode == "--dry":
         print("\n（预览模式，什么都没写。确认后跑 blog tag --apply）")
     else:
         print("处理 %d 个文件，改动 %d 个，跳过 %d 个" % (len(targets), changed, skipped))
+    return 0
 
 
 if __name__ == "__main__":
     rules = load_rules(RULES)
-    main()
+    sys.exit(main())

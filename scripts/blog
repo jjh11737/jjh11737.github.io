@@ -14,7 +14,7 @@
 #    blog publish             不带参数时提交 content/ 下的所有改动
 #    blog tags                看标签统计
 #    blog vis <文件> [public|hidden|draft]   控制单篇是否公开
-#    blog tag [--apply]       按规则表自动生成标签（默认只预览）
+#    blog tag [--apply|--check|--clear]  自动补标签、校验标签（默认只预览）
 #    blog doctor              体检：扫一遍内容，报告缺 title/date、未来日期等问题
 # ============================================================
 set -euo pipefail
@@ -217,19 +217,22 @@ cmd_publish() {
 # ------------------------------------------------------------
 cmd_preview() {
   cd "$ROOT"
+  python3 "$ROOT/scripts/tag.py" --apply --notes >/dev/null
   info "预览: http://localhost:1313/（含草稿和未来日期）"
   exec hugo server -D -F --navigateToChanged
 }
 
 cmd_build() {
   cd "$ROOT"
+  python3 "$ROOT/scripts/tag.py" --apply --notes >/dev/null
+  python3 "$ROOT/scripts/tag.py" --check --notes
   hugo --gc --minify --cleanDestinationDir
   ok "构建完成，产物在 public/"
 }
 
 cmd_tags() {
-  grep -rhoE '^tags:.*' "$CONTENT" \
-    | sed -E 's/^tags:[[:space:]]*\[//; s/\][[:space:]]*$//' \
+  grep -rhoE '^(tags|noteTags):.*' "$CONTENT" \
+    | sed -E 's/^(tags|noteTags):[[:space:]]*\[//; s/\][[:space:]]*$//' \
     | tr ',' '\n' \
     | sed -E 's/^[[:space:]]*//; s/[[:space:]]*$//; s/^"//; s/"$//' \
     | grep -v '^$' \
@@ -408,10 +411,11 @@ cmd_tag() {
   while [ $# -gt 0 ]; do
     case "$1" in
       --apply) mode="--apply"; shift ;;
+      --check) mode="--check"; shift ;;
       --dry | --dry-run) mode="--dry"; shift ;;
       --clear) mode="--clear"; shift ;;
       -h | --help)
-        printf '用法: blog tag [--apply|--clear] [文件...]\n'
+        printf '用法: blog tag [--apply|--check|--clear] [--notes] [文件...]\n'
         return 0
         ;;
       *)

@@ -35,6 +35,11 @@ jobs:
           sudo install -m 755 /tmp/hugo /usr/local/bin/hugo
           hugo version
 
+      - name: Update and validate note tags
+        run: |
+          python3 scripts/tag.py --apply --notes
+          python3 scripts/tag.py --check --notes
+
       - name: Build
         run: hugo --minify --gc
 

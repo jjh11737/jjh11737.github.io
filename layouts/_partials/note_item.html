@@ -1,4 +1,4 @@
-<li class="note-item" data-note="{{ with .Params.noteTags }}{{ delimit . " " }}{{ end }}">
+<li class="note-item" data-note="{{ .Params.noteTags | jsonify }}">
   <a class="note-item-title" href="{{ .RelPermalink }}">{{ .Title }}</a>
   <time class="note-item-date">{{ .Date.Format "2006-01-02" }}</time>
   {{- with .Params.noteTags }}

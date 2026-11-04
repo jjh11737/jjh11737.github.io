@@ -2,6 +2,7 @@
 title: "C阶段"
 date: 2026-11-02T16:25:54+08:00
 draft: false
+noteTags: ["ysyx"]
 ---
 
 # C阶段记录
@@ -125,4 +126,13 @@ draft: false
 
 
 
+
+
+
+## 实现单周期RV32ENPC
+
+首先先RTFM，RV32E的标准是：
+
+- 通用寄存器为0~15
+- 除此之外和RV32I一致
 

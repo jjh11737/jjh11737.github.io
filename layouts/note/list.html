@@ -68,7 +68,13 @@
         var items = groups[g].querySelectorAll('[data-note]');
         var shown = 0;
         for (var i = 0; i < items.length; i++) {
-          var tags = (items[i].getAttribute('data-note') || '').trim().split(/\s+/);
+          var tags = [];
+          try {
+            var parsed = JSON.parse(items[i].getAttribute('data-note') || '[]');
+            if (Array.isArray(parsed)) tags = parsed;
+          } catch (err) {
+            tags = [];
+          }
           var ok = !active || tags.indexOf(active) >= 0;
           items[i].style.display = ok ? '' : 'none';
           if (ok) shown++;
