@@ -13,12 +13,55 @@ noteTags: ["电子", "Chisel"]
 > 我个人认为Explanations好用的多
 
 
-尽管Chisel主要集中在数字逻辑，它也支持模拟量 / 三态（通过`Analog`type）
+尽管Chisel主要集中在数字逻辑，它也支持模拟量 / 三态
 而且它也提供了DPI-C的机制！
 
 ## mill
 
 > [Build Scala with Mill](https://mill-build.org/mill/scalalib/intro.html)
+
+首先，mill有3种主要的方式来定义scala项目：
+
+- Declarative Cofiguration
+- Single-File Scripts
+- Programmable Configuration
+
+
+
+Scala/Java compatibility table (maximum version supported):
+
+| Chisel | Scala   | Java |
+| ------ | ------- | ---- |
+| 3.5.6  | 2.13.10 | 17   |
+| 3.6.1  | 2.13.14 | 22   |
+| 5.x    | 2.13.14 | 22   |
+| 6.x    | 2.13.16 | 23   |
+| 7.x <=   | 2.13.18 | 26   |
+
+
+还是使用更加方便的Programmable Configuration好了，只需要一个简单的build.mill，根据官网的说明，我们构建需要使用`ScalaModule`，相关的[API说明](https://mill-build.org/api/latest/mill/scalalib/ScalaModule.html)
+
+
+我们要做的事情就是调用scalac来对我们的源文件编译因此
+
+
+
+
+不过需要注意的是，实际上我们在build.mill里面定义的`object`是可以直接被当作命令调用的！比如你定义了：
+```scala
+object foo {
+    def hello = T{
+        println("Hello mill")
+    }
+}
+```
+那么你就可以直接调用：`mill foo.hello`
+
+
+
+
+
+
 
 
 ## Chisel语法
@@ -27,7 +70,21 @@ noteTags: ["电子", "Chisel"]
 
 
 
+
 1. 基本类型 /  常量
+
+    - 事实上，一切Chisel专有的数据类型都属于Chisel的`Data`类
+
+    > 因此比如我们利用泛型来编写模块时，最好使用`[T <: Data]`
+    >
+    > ```scala
+    > class ValidIO[T <: Data](gen: T) extends Bundle {
+    >   val valid = Bool()
+    >   val bits = gen.cloneType
+    > }
+    > ```
+
+
     - chisel提供了3个数据类型来表示连线/组合逻辑/寄存器：
 
         - Bits
@@ -100,7 +157,7 @@ noteTags: ["电子", "Chisel"]
 
     - Mux：
         ```scala
-        vak res = Mux(sel, a, b)    // sel should be bool
+        val res = Mux(sel, a, b)    // sel should be bool
         ```
 
 3. 寄存器
@@ -335,6 +392,36 @@ noteTags: ["电子", "Chisel"]
 | `val lte = a <= b`                          | Less than or equal                                    |
 
 
+### 组件
+
+实际上，Chisel的组件就是所谓`Module`，他们都extends自`Module`类并且有一个`io`子域作为对外接口。而接口的定义通过一个被`IO`包裹的`Bundle`，内部通过`Input()` / `Output()`来决定输入输出方向
+
+```scala
+class Adder(val w: Int) extends Module {
+    val io = IO(new Bundle{
+        val a = Input(UInt(w.W))
+        val b = Input(UInt(w.W))
+        val y = Output(UInt(w.W))
+        })
+    io.y := io.a + io.b;
+}
+class Register(val w: Int) extends Module {
+    val io = IO(new Bundle {
+        val d = Input(UInt(w.W))
+        val q = Output(UInt(w.W))
+        })
+    val reg = RegInit(0.U)
+    reg := io.d
+    io.q = reg
+}
+class Counter(val w: Int) extends Module {
+    val io = IO(new Bundle {
+        val dout = Output(UInt(w.W))
+        })
+}
+```
+
+
 
 
 
@@ -347,6 +434,61 @@ noteTags: ["电子", "Chisel"]
 整个Chisel的Tool Flow大体如此：
 ![image-20261104191225212](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20261104191225212.png)
 
-那么对我们来说，需要重点了解的还有就是[CIRCT的官方文档](https://circt.llvm.org/docs/)了
+那么对我们来说，需要重点了解的还有就是[CIRCT的官方文档](https://circt.llvm.org/docs/)了。主要阅读关于Verilog的部分：
+
+-----
+RTFM
+
+难点：不同的EDA工具支持不同的语言特性，并且不同的码风(emission style)会导致不同的仿真器性能表现。另一方面还有linter的问题，希望verilog emission尽可能对静态检查友好，和高可读性
+
+Baseline Assumptions：
+
+为了统一，circt假设了这些工具能够支持一个verilog的子集，定义于[IEEE 1364.1-2002 “IEEE Standard for Verilog Register Transfer Level Synthesis”](https://0x04.net/~mwk/vstd/ieee-1364.1-2002.pdf)
+
+使用`LoweringOptions`控制输出风格，它包含了各种关于生成的Verilog形式的属性。
+默认的属性已经能生成长得好看的代码了。
+
+之后就是介绍不同的属性了，只看跟我们实现有关的一些部分：
+
+对于Verilator：
+
+建议使用：`locationInfoStyle=wrapInAtSquareBracket` and `disallowLocalVariables`
+
+之所以要加上前者，是因为verilator会把`// verilog`识别为verilator的metadata来影响编译器的行为，因为如果我们生成的代码是：
+```verilog
+// verilator/generated.sv:123:4
+```
+它就会被识别为元注释，因此正确的方法是将`location information`包装起来，变成：
+```verilog
+// @[verilator/generated.sv:123:4]
+```
+另一方面，因为verilator有时会把`automatic logic`也就是局部变量识别为latch而产生警告，比如这个例子：
+```verilator
+always_comb begin
+    automatic logic [7:0] tmp;
+    if (enable)
+        tmp = data;
+    res = tmp;
+end
+```
+而启用`disallowLocalVariables`就是防止CIRCT生成这类局部变量
+
+
+对于yosys：
+
+推荐使用`the disallowLocalVariables` and `disallowPackedArrays`
+
+
+
+
+
+
+
+
+
+----
+
+## Style Guide
+
 
 

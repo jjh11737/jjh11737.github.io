@@ -479,18 +479,18 @@ $$
 
 ### 离散化处理工程问题
 
-#### 消除混叠的预滤波
+#### 一 消除混叠的预滤波
 
-显然，现实的输入有噪声，不可能是带限的，即使是一小点误差，在我们采样后也很难忽略吧？为了防止混叠，我们必须先将输入信号强制带限。并且应该保证：限带要小于采样率的一半
+显然，现实的输入有噪声，不可能是带限的，即使是一小点误差，在我们采样后也很难忽略吧？为了防止混叠，我们必须先将输入信号**强制带限**。并且应该保证：限带要小于采样率的一半
 
 ![image-20261027171318879](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20261027171318879.png)
 
-而实现它的低通滤波器，却很难满足我们的需求：
+同时实际的滤波器很难满足我们的需求：
 
-- 做不到锐截止
-- 真的要这么做，会有严重的非线性相位失真
+- **做不到锐截止**
+- 真的要这么做，会有严重的**非线性相位失真**
 
-正因为如此，我们为了优先保证在$\frac \pi T$以上的频率响应可以忽略不计，只能在低于它的频率上就引入衰减了，这就是**幅度预滚降**
+正因为如此，我们为了优先保证在$\frac \pi T$以上的频率响应可以忽略不计，只能在低于它的频率上就引入衰减了，这就是**幅度预滚降**，毕竟我们的关键目的是忽略更高频的噪声
 
 > 这种衰减带来的幅度失真可以部分地在离散时间系统中进行补偿
 
@@ -498,32 +498,49 @@ $$
 
 ##### 过采样抗混叠
 
-过采样本身可以给滤波器带来更宽的过渡带。
+我们知道：**过采样本身可以给滤波器带来更宽的过渡带。**
 
-因此我们可以先用模拟滤波器初步地处理一下，然后用更高的采样率进行采样，之后再用数字滤波器来完成更加精确的滤波，之后再用M的抽取即可！
+而另一方面**实现模拟的锐截止的低通滤波器是不现实的**
+
+但是我们还是想要避免混叠，怎么办呢？
+
+我们可以：
+
+1. 先用简单的抗混叠滤波器初步地处理一下，**保证在M倍的信号带宽处有显著的衰减**，也即\[\Omega_C=M\Omega_N\]
+
+   > 保证之后采样后不混叠 
+
+2. 然后用更高的采样率也即\[2M\Omega_N\]进行采样
+
+3. 之后再用数字滤波器来完成更加精确的锐截止的滤波
+
+4. 再用M倍抽取还原即可！
 
 ![image-20261027172751334](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20261027172751334.png)
 
+系统如下：
+![image-20261109175722846](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20261109175722846.png)
 
 
 
 
 
+#### 二 A/D采样量化噪声
 
-#### A/D采样量化噪声
-
-采样本身也会引入新的噪声，毕竟我们知道ADC的工作本质就是将连续的电压映射到离散的电平
+采样本身也会引入新的噪声，毕竟我们知道ADC的工作本质就是将连续的电压映射到离散的电平，并非理想的无限精度
 
 ##### 量化
 
-量化器是一种非线性系统，能够将输入样本按照某一特定规则映射到幅值的有限集![image-20261027173223534](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20261027173223534.png)
+**量化器**是一种**非线性系统**，能够将输入样本按照某一特定规则映射到幅值的有限集![image-20261027173223534](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20261027173223534.png)
 
 ##### 量化噪声模型
 
-我们认为：
+我们假设：
 
-- 量化误差是加性噪声信号
+- 量化误差是**加性噪声信号**
 - 在多数情况下，误差\[e(n)=\hat x[n]-x[n]\]是未知的
+
+![image-20261109180003994](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20261109180003994.png)
 
 ##### 加性噪声模型的基本假设：
 
@@ -536,6 +553,257 @@ $$
 
 ##### 均匀量化
 
+同样，**均匀舍入量化噪声**是**均匀分布的随机变量**：\[-\Delta/2<e[n]\leq \Delta/2\]
+
+![image-20261109180220302](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20261109180220302.png)
+
+那么由均匀分布的公式，我们知道它的期望是0，**方差**为\[\sigma_c^2=\frac {\Delta^2}{12}\]
+
+##### 量化噪声功率
+
+我们假定了噪声样本之间是不相关的，这样$e[n]$为均匀分布的白噪声序列。
+
+例如一个\[B+1\]位的双极性量化器，它的满幅度值为\[X_m\]，则它的噪声方差/**功率**就是：
+$$
+\sigma_c^2=\frac{2^{-2B}X_m^2}{12}
+$$
+那么我们使用信噪比来度量：
+$$
+SNR=10lg(\frac{\sigma_x^2}{\sigma_c^2})=10lg(\frac{12\cdot 2^{2B}\sigma_x^2}{X_m^2})=6.02B+10.8-20lg(\frac{X_m}{\sigma_x})
+$$
+也就是说：
+
+- 我们每增加一位量化样本的字长，SNR就会提高6dB
+
+- 每当\[\sigma_x\]减半时，SNR下降6dB
+
+- 因此，我们需要至少想办法让**信号的幅度**和量化器的**满幅度值**匹配非常重要
+
+  > - 对于语音 / 音乐信号，幅度分布趋向于集中在0附近，而且随着幅度增加会很快跌落，幅度超过均方根3~4倍的概率极小
+  >
+  > - 那么基于此，我们可以在前面通过滤波器和放大器增益，确保有：
+  >   $$
+  >   \sigma_x=\frac {X_m}4
+  >   $$
+  >
+  >   > 比如对高斯分布，\[ P(|x|>4\sigma_x)\approx 0.0063\% \]，多数时候是不可能超过量程被钳位的
+
+
+
+#### 三 D/A转换中的信号失真
+
+而来到最后的DA转换，同样面临一个问题，因为要转化为模拟量，而实现一个理想的重构带限的滤波器是不可能的...
+
+可实现的系统是在D/A转换后紧跟着一个补偿重构的滤波器
+
+##### 零阶采样保持器：
+
+其形式为\[h_0(t)=1~0<t<T\]，那么对应的频域函数为：\[H_0(s)=\frac 1s (1-e^{-Ts})\]，在虚轴上就是：\[H_0(j\Omega)=\frac {2\sin{\Omega T/2}}{\Omega}e^{-j\Omega T/2}\]
+
+##### 补偿重构滤波器
+
+也不复杂，想法就是让最终表现为理想内插滤波器的情况，那么它的频谱函数就是：
+$$
+\hat H_r(j\Omega)=\frac {H_r(j\Omega)}{H_0(j\Omega)}=\frac {\Omega T/2}{\sin(\Omega T/2)}e^{j\Omega T/2}, |\Omega|<\pi/T
+$$
+
+
+
+
+
+
+#### 四 过采样A/D转换
+
+##### 过采样信噪比变化
+
+我们考察这个系统，计算它的信噪比：
+
+![image-20261109183747548](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20261109183747548.png)
+
+我们作出如下假设：
+
+- \[x_a(t)\]是零均值广义平稳随机过程
+- 功率谱密度记为\[\Phi_{X_aX_a}(j\Omega)\]
+- 自相关函数记为\[\phi_{X_aX_a}(\tau)\]
+- 假设输入为带限信号为$\Omega_N$
+
+我们知道，量化噪声来自ADC，系统的模型可以变为：
+
+![image-20261109184055970](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20261109184055970.png)
+
+**那么我们首先考虑信号功率：**
+
+> 离散时间随机函数自相关函数的定义：\[ \boxed{ \phi_{xx}[m]=\mathbb{E}\{x[n+m]x^*[n]\} } \]
+
+那么计算一下相隔m个采样间隔的相关程度：
+
+\[ \begin{aligned} \phi_{xx}[m] &=\mathbb{E}\{x[n+m]x[n]\}\\ &=\mathbb{E}\{ x_a((n+m)T)x_a(nT) \}\\ &=\phi_{x_ax_a}(mT) \end{aligned} \]
+
+也就是说离散时间序列的自相关函数等于对应在连续时间自相关函数在采样间隔上的采样
+
+> 这不是显然吗
+
+那么易知对应的功率谱密度也自然不变，也即：
+
+\[ \boxed{ \Phi_{xx}(e^{j\omega})\big|_{\omega=\Omega T} = \frac{1}{T} \sum_{k=-\infty}^{\infty} \Phi_{x_ax_a} \left( j\left(\Omega-\frac{2\pi k}{T}\right) \right) } \]
+
+又因为输入带限，那么实际是：
+
+\[ \boxed{ \Phi_{xx}(e^{j\omega})\big|_{\omega=\Omega T} = \frac{1}{T}  \Phi_{x_ax_a} \left( j\frac \omega T \right) } ~~ |\omega|<\pi/M\]
+
+那么首先考虑输入序列的能量，由维纳-辛钦定理是：
+
+\[ \mathbb E\{x^2[n]\} = \frac{1}{2\pi} \int_{-\pi}^{\pi}\Phi_{xx}(e^{j\omega})d\omega \]
+
+> 这里可能有点不清楚，实际上就是自相关函数取m=0的时候：
+>
+> \[ \begin{aligned} R_{xx}[0] &=\mathbb E\{x[n]x^*[n]\}\\ &=\mathbb E\{|x[n]|^2\} \end{aligned} \]
+>
+> 那么我们知道自相关函数和功率谱密度互为傅里叶变换即得
+
+但是我们信号是带限的，且过采样后频域范围仅为\([-\pi/M,\pi/M]\)，那么：
+
+\[ \begin{aligned} \mathbb E\{x^2[n]\} &=\frac{1}{2\pi} \int_{-\pi/M}^{\pi/M} \frac{1}{T_s} \Phi_{x_ax_a}\left(j\frac{\omega}{T_s}\right) d\omega \end{aligned} \]，这里 \(T_s=T/M\)，用\[ \Omega=\frac{\omega}{T_s} \]代替那么就有：
+
+\[ \begin{aligned} \mathbb E\{x^2[n]\} &=\frac{1}{2\pi} \int_{-\Omega_N}^{\Omega_N} \Phi_{x_ax_a}(j\Omega)d\Omega\\ &=\mathbb E\{x_a^2(t)\} \end{aligned} \]
+
+而再看采样本身，我们知道采样会导致能量减小M倍，又因为只有k=0分量落在有效频带内：
+$$
+\Phi_{x_{da}x_{da}}(e^{j\omega}) = \frac{1}{M} \sum_{k=0}^{M-1} \Phi_{xx}\left( e^{j\frac{\omega-2\pi k}{M}} \right)= \frac{1}{M} \Phi_{xx}(e^{j\omega/M})
+$$
+那么自然有：
+
+\[ \begin{aligned} \mathbb E\{x_{da}^2[n]\} &=\frac{1}{2\pi} \int_{-\pi/M}^{\pi/M} \frac{1}{M}\Phi_{xx}(e^{j\theta})M d\theta \\ &=\frac{1}{2\pi} \int_{-\pi/M}^{\pi/M} \Phi_{xx}(e^{j\theta})d\theta \\ &=\mathbb E\{x^2[n]\} \end{aligned} \]
+
+也就是说，**信号的功率并没有改变**！
+
+> 其实很显然，看看频谱的变化就知道了，我们首先采样时把频谱提高采样率也就是功率提升了M倍，再经过降采样降低M倍，自然不变
+
+
+
+**再考虑量化噪声在输出中的分量：**
+
+首先它的自相关函数：
+
+我们已经知道它的方差也就是功率谱为：\[\sigma_c^2\]
+
+那么抽样后的自相关函数：
+
+\[P_{de}=\mathbb E\{x_{de}[n]\}=\frac 1 {2\pi} \int_{-\pi}^{+\pi }\frac{\sigma_c^2}{M}d\omega=\frac{\sigma_c^2}{M} \]
+
+> 是在采样后被引入的，自然会被减小M倍了
+
+最终的结果：
+$$
+SNR=6.02B+10lgM+10.8-20lg(\frac {X_m}{\sigma_x})
+$$
+
+- 信噪比提升了10lgM
+- 每将过采样M加倍，B就可以减少一半
+
+##### 噪声成形的过采样A/D
+
+很显然，如果仅仅是上述方法，当然可以减少量化位数，但是对采样率提升的要求太大了
+
+由此就引入了噪声成形：改变A/D转换的过程，使得量化噪声的功率谱密度不再是均匀的，将其成形为**大部分的噪声功率位于频带外**
+
+> 怎么实现呢？一个很简单的思路：让噪声信号自己微分一下
+
+###### 噪声成形量化器
+
+从实现来说，实际上就是为输入信号先通过一个积分器，然后在采样输出端加一个DAC，把上一刻的采样结果反馈回来：
+
+![image-20261109193409174](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20261109193409174.png)
+
+![image-20261109193602046](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20261109193602046.png)
+
+这样的结果很明显，$x(n)$不受丝毫影响，而对$e(n)$就需要经过一个微分器了，也就是\[y[n]=x[n]+e[n]-e[n-1]\]，或者说等价的系统是：
+
+![image-20261109194028448](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20261109194028448.png)
+
+那么噪声的功率谱自然就要乘以微分器的幅频特性了：
+
+\[ \Phi_{e_e}(e^{j\omega}) = \sigma_e^2 |H_e(e^{j\omega})|^2 = \sigma_e^2 \left[2\sin\left(\frac{\omega}{2}\right)\right]^2 \]
+
+这样噪声成形后的确会导致总功率变为原来的两倍，但是好处就是我们还有低通滤波器还原，重新计算一下输出中的量化噪声功率：
+
+
+
+当然了，既然如此，多加几级积分器也不会带来太多麻烦：
+
+![image-20261109194608389](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20261109194608389.png)
+
+
+
+
+
+### 第4章 离散傅里叶变换和快速算法
+
+
+
+#### DFT
+
+DFT并不是严格的，它的公式实际上和DFS一样！但是唯一的不同是它针对的是有限长的序列，对它进行周期延拓后处理罢了
+
+DFT 定义为：
+
+\[ X[k]=\sum_{n=0}^{N-1} x[n]e^{-j\frac{2\pi}{N}kn} \]
+
+逆变换：
+
+\[ x[n]=\frac{1}{N}\sum_{k=0}^{N-1} X[k]e^{j\frac{2\pi}{N}kn} \]
+
+> 而同DTFT对比，实际上它就是DTFT的等间隔采样罢了
+>
+> 假设我们有一个有限长序列：
+>
+> \[ x[n],\quad 0\leq n\leq N-1 \]
+>
+> 它的 DTFT 是：
+>
+> \[ X(e^{j\omega})= \sum_{n=0}^{N-1}x[n]e^{-j\omega n} \]
+>
+> 现在，我们只在以下 \(N\) 个频率点上采样：
+>
+> \[ \omega_k=\frac{2\pi k}{N} \]
+>
+> 代入：
+>
+> \[ X(e^{j\omega_k}) = \sum_{n=0}^{N-1} x[n]e^{-j\frac{2\pi}{N}kn} \]
+>
+> 这不就是 DFT 的定义吗？
+>
+> 因此：
+>
+> \[ \boxed{ X[k]=X(e^{j\omega})\bigg|_{\omega=\frac{2\pi k}{N}} } \]
+
+
+
+##### DFT对偶性（1）
+
+同时就像连续的情况一样，IDFT可以通过DFT来计算！
+\[
+\mathrm{DFT}: \quad X(k)=\sum_{n=0}^{N-1}x(n)W_N^{nk}
+\]
+
+\[
+\begin{aligned}
+\mathrm{IDFT}: \quad x(n)
+&=\frac{1}{N}\left(\sum_{k=0}^{N-1}X(k)W_N^{-nk}\right)\\
+&=\frac{1}{N}\left(\sum_{k=0}^{N-1}X^*(k)W_N^{nk}\right)
+\end{aligned}
+\]
+
+\[
+\mathrm{IDFT}[X(k)]
+=\frac{1}{N}\mathrm{DFT}[X^*(k)]
+\]
+
+> 为了方便起见，我们约定\[W_N=e^{j\frac {2\pi} {N}}\]
+
+
+
+##### DFT对偶性（2）
 
 
 
@@ -545,10 +813,35 @@ $$
 
 
 
+##### 共轭对称性
+
+实际上很简单，从直觉来说我们都知道DFT的共轭对称就是对应圆周上的对称
+
+- \[x(n)=x^*(N-n)\]，就是所谓共轭对称
+- \[x(n)=-x^*(N-n)\]，共轭反对称
+
+而具体的来源，实际上我们还是可以参考周期序列共轭对称的定义：
+
+\[x_e(n)=\frac 12[x(n)+x^*(-n)]=\frac 12[x((n))_N+x^*((N-n))_N]\]
+
+\[x_e(n)=\frac 12[x(n)-x^*(-n)]=\frac 12[x((n))_N-x^*((N-n))_N]\]
 
 
 
 
 
+\[DFT[x((-n))_NR_N(n)]=X(N-k)\]
+
+> 先反折再周期延拓再取主值区间
+
+证明其实相当简单，我们从RHS入手，我们很清楚因为\[X(k)=X(e^{j\omega})|_{\omega=k\frac {2\pi}N}\]，那么理所当然地\[X(N-k)=X(e^{-j\omega})|_{\omega=k\frac{2\pi}N}\]，它就对应着序列\[x(-n)\]！
 
 
+
+##### 利用对称性减少计算量
+
+- 对纯实数（虚数），我们只需要知道一半的数目就可以知道另一半
+
+- 对于两个实数序列的DFT，我们完全可以把它们分别放在实数和虚数上从而用一次DFT运算来解决：
+
+  \[w(n)=x_1(n)+jx_2(n)\]
