@@ -1532,7 +1532,6 @@ $$
   m_X(t)=E[X(t)]=m_X
   $$
   
-
 - 自相关函数
   $$
   R_X(t_1,t_2)=E[X(t_1)X(t_2)]=\int_{-\infty}
@@ -1561,3 +1560,73 @@ $$
 
   如果分布函数也不知道... 那一般是让你判定它不是广义平稳的，直接一阶一阶检查过去即可
 
+
+
+
+
+#### 平稳随机过程的自相关函数性质
+
+- 奇偶性：
+  $$
+  R(\tau)=E[x(t+\tau)x(t)]=E[x(t)x(t+\tau)]=E(-\tau)
+  $$
+
+- 最大值：
+  $$
+  [x(t+\tau)-x(t)]^2>0\\
+  \rightarrow E[x^2(t+\tau)]+E[x^2(t)]\geq 2E[x(t+\tau) x(t)]\\
+  \rightarrow R_x(0) \geq R_x(\tau)
+  $$
+  
+
+- 特殊值：
+  $$
+  \lim_{\tau\to\infty}R(\tau)=\lim_{\tau\to\infty}E[X(t)X(t-\tau)]=E[X(t)]E[X(t-\tau)]=m^2\\
+  R(0)=E[X^2(t)]=m^2+\sigma^2
+  $$
+
+- 连续性：
+  $$
+  e
+  $$
+
+- 非负定性
+- 周期性
+
+#### 联合平稳
+
+若随机过程$X(t),Y(t)$均平稳，相关函数满足
+$$
+R_{XY}(t_1,t_2)=E[X(t_1)Y(t_2)]=R_{XY}(\tau),\tau=t_1-t_2
+$$
+就称$X(t)$与$Y(t)$联合平稳
+
+#### 互相关函数的性质
+
+- 对称性
+- 最大值
+- $Z(t)=X(t)+Y(t)$的性质
+
+#### 相关系数和相关时间
+
+- 相关系数
+  $$
+  r_X(\tau)=\frac{C_X(\tau)}{C_X(0)}=\frac{R_X(\tau)-m_X^2}{\sigma_X^2}
+  $$
+
+- 相关时间
+  $$
+  \tau_0=\int_0^\infty r_X(\tau)d\tau
+  $$
+
+
+
+
+
+#### 例题
+
+![image-20261116112232106](https://raw.githubusercontent.com/jjh11737/jjh-blog-images/master/imgs/image-20261116112232106.png)
+$$
+R_X(0)=E[X^2(t)]=25\\
+R_X(\infty)=m^2=16
+$$
