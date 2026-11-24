@@ -9,6 +9,7 @@ timeZone = "Asia/Shanghai"
 theme = "PaperMod"
 enableRobotsTXT = true
 enableEmoji = true
+enableGitInfo = true
 
 [pagination]
   pagerSize = 20
